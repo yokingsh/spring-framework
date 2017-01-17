@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -31,15 +31,14 @@ import org.springframework.messaging.converter.MessageConverter;
 import org.springframework.messaging.handler.invocation.HandlerMethodArgumentResolver;
 import org.springframework.messaging.handler.invocation.HandlerMethodArgumentResolverComposite;
 import org.springframework.messaging.handler.invocation.InvocableHandlerMethod;
-import org.springframework.validation.Errors;
 import org.springframework.validation.Validator;
 
 /**
  * The default {@link MessageHandlerMethodFactory} implementation creating an
  * {@link InvocableHandlerMethod} with the necessary
  * {@link HandlerMethodArgumentResolver} instances to detect and process
- * most of  the use cases defined by
- * {@link org.springframework.messaging.handler.annotation.MessageMapping MessageMapping}
+ * most of the use cases defined by
+ * {@link org.springframework.messaging.handler.annotation.MessageMapping MessageMapping}.
  *
  * <p>Extra method argument resolvers can be added to customize the method
  * signature that can be handled.
@@ -62,7 +61,7 @@ public class DefaultMessageHandlerMethodFactory implements MessageHandlerMethodF
 
 	private MessageConverter messageConverter;
 
-	private Validator validator = new NoOpValidator();
+	private Validator validator;
 
 	private List<HandlerMethodArgumentResolver> customArgumentResolvers;
 
@@ -145,12 +144,12 @@ public class DefaultMessageHandlerMethodFactory implements MessageHandlerMethodF
 	@Override
 	public InvocableHandlerMethod createInvocableHandlerMethod(Object bean, Method method) {
 		InvocableHandlerMethod handlerMethod = new InvocableHandlerMethod(bean, method);
-		handlerMethod.setMessageMethodArgumentResolvers(argumentResolvers);
+		handlerMethod.setMessageMethodArgumentResolvers(this.argumentResolvers);
 		return handlerMethod;
 	}
 
 	protected List<HandlerMethodArgumentResolver> initArgumentResolvers() {
-		List<HandlerMethodArgumentResolver> resolvers = new ArrayList<HandlerMethodArgumentResolver>();
+		List<HandlerMethodArgumentResolver> resolvers = new ArrayList<>();
 		ConfigurableBeanFactory cbf = (this.beanFactory instanceof ConfigurableBeanFactory ?
 				(ConfigurableBeanFactory) this.beanFactory : null);
 
@@ -159,7 +158,7 @@ public class DefaultMessageHandlerMethodFactory implements MessageHandlerMethodF
 		resolvers.add(new HeadersMethodArgumentResolver());
 
 		// Type-based argument resolution
-		resolvers.add(new MessageMethodArgumentResolver());
+		resolvers.add(new MessageMethodArgumentResolver(this.messageConverter));
 
 		if (this.customArgumentResolvers != null) {
 			resolvers.addAll(this.customArgumentResolvers);
@@ -167,19 +166,6 @@ public class DefaultMessageHandlerMethodFactory implements MessageHandlerMethodF
 		resolvers.add(new PayloadArgumentResolver(this.messageConverter, this.validator));
 
 		return resolvers;
-	}
-
-
-	private static final class NoOpValidator implements Validator {
-
-		@Override
-		public boolean supports(Class<?> clazz) {
-			return false;
-		}
-
-		@Override
-		public void validate(Object target, Errors errors) {
-		}
 	}
 
 }

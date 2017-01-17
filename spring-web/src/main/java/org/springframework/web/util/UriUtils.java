@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,8 +18,7 @@ package org.springframework.web.util;
 
 import java.io.ByteArrayOutputStream;
 import java.io.UnsupportedEncodingException;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+import java.nio.charset.Charset;
 
 import org.springframework.util.Assert;
 
@@ -27,187 +26,20 @@ import org.springframework.util.Assert;
  * Utility class for URI encoding and decoding based on RFC 3986.
  * Offers encoding methods for the various URI components.
  *
- * <p>All {@code encode*(String, String} methods in this class operate in a similar way:
+ * <p>All {@code encode*(String, String)} methods in this class operate in a similar way:
  * <ul>
  * <li>Valid characters for the specific URI component as defined in RFC 3986 stay the same.</li>
  * <li>All other characters are converted into one or more bytes in the given encoding scheme.
- * Each of the resulting bytes is written as a hexadecimal string in the "{@code %<i>xy</i>}"
+ * Each of the resulting bytes is written as a hexadecimal string in the "<code>%<i>xy</i></code>"
  * format.</li>
  * </ul>
  *
  * @author Arjen Poutsma
+ * @author Juergen Hoeller
  * @since 3.0
  * @see <a href="http://www.ietf.org/rfc/rfc3986.txt">RFC 3986</a>
  */
 public abstract class UriUtils {
-
-	private static final String SCHEME_PATTERN = "([^:/?#]+):";
-
-	private static final String HTTP_PATTERN = "(http|https):";
-
-	private static final String USERINFO_PATTERN = "([^@/]*)";
-
-	private static final String HOST_PATTERN = "([^/?#:]*)";
-
-	private static final String PORT_PATTERN = "(\\d*)";
-
-	private static final String PATH_PATTERN = "([^?#]*)";
-
-	private static final String QUERY_PATTERN = "([^#]*)";
-
-	private static final String LAST_PATTERN = "(.*)";
-
-	// Regex patterns that matches URIs. See RFC 3986, appendix B
-	private static final Pattern URI_PATTERN = Pattern.compile(
-			"^(" + SCHEME_PATTERN + ")?" + "(//(" + USERINFO_PATTERN + "@)?" + HOST_PATTERN + "(:" + PORT_PATTERN +
-					")?" + ")?" + PATH_PATTERN + "(\\?" + QUERY_PATTERN + ")?" + "(#" + LAST_PATTERN + ")?");
-
-	private static final Pattern HTTP_URL_PATTERN = Pattern.compile(
-			"^" + HTTP_PATTERN + "(//(" + USERINFO_PATTERN + "@)?" + HOST_PATTERN + "(:" + PORT_PATTERN + ")?" + ")?" +
-					PATH_PATTERN + "(\\?" + LAST_PATTERN + ")?");
-
-
-	// encoding
-
-	/**
-	 * Encodes the given source URI into an encoded String. All various URI components are
-	 * encoded according to their respective valid character sets.
-	 * <p><strong>Note</strong> that this method does not attempt to encode "=" and "&"
-	 * characters in query parameter names and query parameter values because they cannot
-	 * be parsed in a reliable way. Instead use:
-	 * <pre class="code">
-	 * UriComponents uriComponents = UriComponentsBuilder.fromUri("/path?name={value}").buildAndExpand("a=b");
-	 * String encodedUri = uriComponents.encode().toUriString();
-	 * </pre>
-	 * @param uri the URI to be encoded
-	 * @param encoding the character encoding to encode to
-	 * @return the encoded URI
-	 * @throws IllegalArgumentException when the given uri parameter is not a valid URI
-	 * @throws UnsupportedEncodingException when the given encoding parameter is not supported
-	 * @deprecated in favor of {@link UriComponentsBuilder}; see note about query param encoding
-	 */
-	@Deprecated
-	public static String encodeUri(String uri, String encoding) throws UnsupportedEncodingException {
-		Assert.notNull(uri, "URI must not be null");
-		Assert.hasLength(encoding, "Encoding must not be empty");
-		Matcher matcher = URI_PATTERN.matcher(uri);
-		if (matcher.matches()) {
-			String scheme = matcher.group(2);
-			String authority = matcher.group(3);
-			String userinfo = matcher.group(5);
-			String host = matcher.group(6);
-			String port = matcher.group(8);
-			String path = matcher.group(9);
-			String query = matcher.group(11);
-			String fragment = matcher.group(13);
-			return encodeUriComponents(scheme, authority, userinfo, host, port, path, query, fragment, encoding);
-		}
-		else {
-			throw new IllegalArgumentException("[" + uri + "] is not a valid URI");
-		}
-	}
-
-	/**
-	 * Encodes the given HTTP URI into an encoded String. All various URI components are
-	 * encoded according to their respective valid character sets.
-	 * <p><strong>Note</strong> that this method does not support fragments ({@code #}),
-	 * as these are not supposed to be sent to the server, but retained by the client.
-	 * <p><strong>Note</strong> that this method does not attempt to encode "=" and "&"
-	 * characters in query parameter names and query parameter values because they cannot
-	 * be parsed in a reliable way. Instead use:
-	 * <pre class="code">
-	 * UriComponents uriComponents = UriComponentsBuilder.fromHttpUrl("/path?name={value}").buildAndExpand("a=b");
-	 * String encodedUri = uriComponents.encode().toUriString();
-	 * </pre>
-	 * @param httpUrl the HTTP URL to be encoded
-	 * @param encoding the character encoding to encode to
-	 * @return the encoded URL
-	 * @throws IllegalArgumentException when the given uri parameter is not a valid URI
-	 * @throws UnsupportedEncodingException when the given encoding parameter is not supported
-	 * @deprecated in favor of {@link UriComponentsBuilder}; see note about query param encoding
-	 */
-	@Deprecated
-	public static String encodeHttpUrl(String httpUrl, String encoding) throws UnsupportedEncodingException {
-		Assert.notNull(httpUrl, "HTTP URL must not be null");
-		Assert.hasLength(encoding, "Encoding must not be empty");
-		Matcher matcher = HTTP_URL_PATTERN.matcher(httpUrl);
-		if (matcher.matches()) {
-			String scheme = matcher.group(1);
-			String authority = matcher.group(2);
-			String userinfo = matcher.group(4);
-			String host = matcher.group(5);
-			String portString = matcher.group(7);
-			String path = matcher.group(8);
-			String query = matcher.group(10);
-			return encodeUriComponents(scheme, authority, userinfo, host, portString, path, query, null, encoding);
-		}
-		else {
-			throw new IllegalArgumentException("[" + httpUrl + "] is not a valid HTTP URL");
-		}
-	}
-
-	/**
-	 * Encodes the given source URI components into an encoded String. All various URI components
-	 * are optional, but encoded according to their respective valid character sets.
-	 * @param scheme the scheme
-	 * @param authority the authority
-	 * @param userInfo the user info
-	 * @param host the host
-	 * @param port the port
-	 * @param path the path
-	 * @param query the query
-	 * @param fragment the fragment
-	 * @param encoding the character encoding to encode to
-	 * @return the encoded URI
-	 * @throws IllegalArgumentException when the given uri parameter is not a valid URI
-	 * @throws UnsupportedEncodingException when the given encoding parameter is not supported
-	 * @deprecated in favor of {@link UriComponentsBuilder}
-	 */
-	@Deprecated
-	public static String encodeUriComponents(String scheme, String authority, String userInfo,
-			String host, String port, String path, String query, String fragment, String encoding)
-			throws UnsupportedEncodingException {
-
-		Assert.hasLength(encoding, "Encoding must not be empty");
-		StringBuilder sb = new StringBuilder();
-
-		if (scheme != null) {
-			sb.append(encodeScheme(scheme, encoding));
-			sb.append(':');
-		}
-
-		if (authority != null) {
-			sb.append("//");
-			if (userInfo != null) {
-				sb.append(encodeUserInfo(userInfo, encoding));
-				sb.append('@');
-			}
-			if (host != null) {
-				sb.append(encodeHost(host, encoding));
-			}
-			if (port != null) {
-				sb.append(':');
-				sb.append(encodePort(port, encoding));
-			}
-		}
-
-		sb.append(encodePath(path, encoding));
-
-		if (query != null) {
-			sb.append('?');
-			sb.append(encodeQuery(query, encoding));
-		}
-
-		if (fragment != null) {
-			sb.append('#');
-			sb.append(encodeFragment(fragment, encoding));
-		}
-
-		return sb.toString();
-	}
-
-
-	// encoding convenience methods
 
 	/**
 	 * Encodes the given URI scheme with the given encoding.
@@ -319,6 +151,20 @@ public abstract class UriUtils {
 		return HierarchicalUriComponents.encodeUriComponent(fragment, encoding, HierarchicalUriComponents.Type.FRAGMENT);
 	}
 
+	/**
+	 * Encode characters outside the unreserved character set as defined in
+	 * <a href="https://tools.ietf.org/html/rfc3986#section-2">RFC 3986 Section 2</a>.
+	 * <p>This can be used to ensure the given String will not contain any
+	 * characters with reserved URI meaning regardless of URI component.
+	 * @param source the string to be encoded
+	 * @param encoding the character encoding to encode to
+	 * @return the encoded string
+	 * @throws UnsupportedEncodingException when the given encoding parameter is not supported
+	 */
+	public static String encode(String source, String encoding) throws UnsupportedEncodingException {
+		HierarchicalUriComponents.Type type = HierarchicalUriComponents.Type.URI;
+		return HierarchicalUriComponents.encodeUriComponent(source, encoding, type);
+	}
 
 	// decoding
 
@@ -338,8 +184,26 @@ public abstract class UriUtils {
 	 * @see java.net.URLDecoder#decode(String, String)
 	 */
 	public static String decode(String source, String encoding) throws UnsupportedEncodingException {
-		Assert.notNull(source, "Source must not be null");
-		Assert.hasLength(encoding, "Encoding must not be empty");
+		return decode(source, Charset.forName(encoding));
+	}
+
+	/**
+	 * Decodes the given encoded source String into an URI. Based on the following rules:
+	 * <ul>
+	 * <li>Alphanumeric characters {@code "a"} through {@code "z"}, {@code "A"} through {@code "Z"}, and
+	 * {@code "0"} through {@code "9"} stay the same.</li>
+	 * <li>Special characters {@code "-"}, {@code "_"}, {@code "."}, and {@code "*"} stay the same.</li>
+	 * <li>A sequence "{@code %<i>xy</i>}" is interpreted as a hexadecimal representation of the character.</li>
+	 * </ul>
+	 * @param source the source string
+	 * @param charset the character set
+	 * @return the decoded URI
+	 * @throws IllegalArgumentException when the given source contains invalid encoded sequences
+	 * @see java.net.URLDecoder#decode(String, String)
+	 */
+	public static String decode(String source, Charset charset) {
+		Assert.notNull(source, "'source' must not be null");
+		Assert.notNull(charset, "'charset' must not be null");
 		int length = source.length();
 		ByteArrayOutputStream bos = new ByteArrayOutputStream(length);
 		boolean changed = false;
@@ -366,7 +230,31 @@ public abstract class UriUtils {
 				bos.write(ch);
 			}
 		}
-		return (changed ? new String(bos.toByteArray(), encoding) : source);
+		return (changed ? new String(bos.toByteArray(), charset) : source);
+	}
+
+	/**
+	 * Extract the file extension from the given URI path.
+	 * @param path the URI path (e.g. "/products/index.html")
+	 * @return the extracted file extension (e.g. "html")
+	 * @since 4.3.2
+	 */
+	public static String extractFileExtension(String path) {
+		int end = path.indexOf('?');
+		if (end == -1) {
+			end = path.indexOf('#');
+			if (end == -1) {
+				end = path.length();
+			}
+		}
+		int begin = path.lastIndexOf('/', end) + 1;
+		int paramIndex = path.indexOf(';', begin);
+		end = (paramIndex != -1 && paramIndex < end ? paramIndex : end);
+		int extIndex = path.lastIndexOf('.', end);
+		if (extIndex != -1 && extIndex > begin) {
+			return path.substring(extIndex + 1, end);
+		}
+		return null;
 	}
 
 }

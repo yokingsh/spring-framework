@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -29,6 +29,7 @@ import org.springframework.beans.factory.BeanDefinitionStoreException;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanNotOfRequiredTypeException;
 import org.springframework.beans.factory.NoSuchBeanDefinitionException;
+import org.springframework.core.ResolvableType;
 import org.springframework.jndi.JndiLocatorSupport;
 import org.springframework.jndi.TypeMismatchNamingException;
 
@@ -39,7 +40,7 @@ import org.springframework.jndi.TypeMismatchNamingException;
  * the {@link org.springframework.beans.factory.ListableBeanFactory} interface.
  *
  * <p>This factory resolves given bean names as JNDI names within the
- * J2EE application's "java:comp/env/" namespace. It caches the resolved
+ * Java EE application's "java:comp/env/" namespace. It caches the resolved
  * types for all obtained objects, and optionally also caches shareable
  * objects (if they are explicitly marked as
  * {@link #addShareableResource shareable resource}.
@@ -59,13 +60,13 @@ import org.springframework.jndi.TypeMismatchNamingException;
 public class SimpleJndiBeanFactory extends JndiLocatorSupport implements BeanFactory {
 
 	/** JNDI names of resources that are known to be shareable, i.e. can be cached */
-	private final Set<String> shareableResources = new HashSet<String>();
+	private final Set<String> shareableResources = new HashSet<>();
 
 	/** Cache of shareable singleton objects: bean name --> bean instance */
-	private final Map<String, Object> singletonObjects = new HashMap<String, Object>();
+	private final Map<String, Object> singletonObjects = new HashMap<>();
 
 	/** Cache of the types of nonshareable resources: bean name --> bean type */
-	private final Map<String, Class<?>> resourceTypes = new HashMap<String, Class<?>>();
+	private final Map<String, Class<?>> resourceTypes = new HashMap<>();
 
 
 	public SimpleJndiBeanFactory() {
@@ -173,9 +174,15 @@ public class SimpleJndiBeanFactory extends JndiLocatorSupport implements BeanFac
 	}
 
 	@Override
-	public boolean isTypeMatch(String name, Class<?> targetType) throws NoSuchBeanDefinitionException {
+	public boolean isTypeMatch(String name, ResolvableType typeToMatch) throws NoSuchBeanDefinitionException {
 		Class<?> type = getType(name);
-		return (targetType == null || (type != null && targetType.isAssignableFrom(type)));
+		return (type != null && typeToMatch.isAssignableFrom(type));
+	}
+
+	@Override
+	public boolean isTypeMatch(String name, Class<?> typeToMatch) throws NoSuchBeanDefinitionException {
+		Class<?> type = getType(name);
+		return (typeToMatch == null || (type != null && typeToMatch.isAssignableFrom(type)));
 	}
 
 	@Override

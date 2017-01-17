@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,8 +16,9 @@
 
 package org.springframework.messaging.support;
 
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -39,10 +40,10 @@ import static org.junit.Assert.*;
  * Test fixture for {@link MessageHeaderAccessor}.
  *
  * @author Rossen Stoyanchev
+ * @author Sebastien Deleuze
+ * @author Juergen Hoeller
  */
 public class MessageHeaderAccessorTests {
-
-	private static final Charset UTF_8 = Charset.forName("UTF-8");
 
 	@Rule
 	public final ExpectedException thrown = ExpectedException.none();
@@ -89,6 +90,76 @@ public class MessageHeaderAccessorTests {
 	}
 
 	@Test
+	public void testRemoveHeader() {
+		Message<?> message = new GenericMessage<>("payload", Collections.singletonMap("foo", "bar"));
+		MessageHeaderAccessor accessor = new MessageHeaderAccessor(message);
+		accessor.removeHeader("foo");
+		Map<String, Object> headers = accessor.toMap();
+		assertFalse(headers.containsKey("foo"));
+	}
+
+	@Test
+	public void testRemoveHeaderEvenIfNull() {
+		Message<?> message = new GenericMessage<>("payload", Collections.singletonMap("foo", null));
+		MessageHeaderAccessor accessor = new MessageHeaderAccessor(message);
+		accessor.removeHeader("foo");
+		Map<String, Object> headers = accessor.toMap();
+		assertFalse(headers.containsKey("foo"));
+	}
+
+	@Test
+	public void removeHeaders() {
+		Map<String, Object> map = new HashMap<>();
+		map.put("foo", "bar");
+		map.put("bar", "baz");
+		GenericMessage<String> message = new GenericMessage<>("payload", map);
+		MessageHeaderAccessor accessor = new MessageHeaderAccessor(message);
+
+		accessor.removeHeaders("fo*");
+
+		MessageHeaders actual = accessor.getMessageHeaders();
+		assertEquals(2, actual.size());
+		assertNull(actual.get("foo"));
+		assertEquals("baz", actual.get("bar"));
+	}
+
+	@Test
+	public void copyHeaders() {
+		Map<String, Object> map1 = new HashMap<>();
+		map1.put("foo", "bar");
+		GenericMessage<String> message = new GenericMessage<>("payload", map1);
+		MessageHeaderAccessor accessor = new MessageHeaderAccessor(message);
+
+		Map<String, Object> map2 = new HashMap<>();
+		map2.put("foo", "BAR");
+		map2.put("bar", "baz");
+		accessor.copyHeaders(map2);
+
+		MessageHeaders actual = accessor.getMessageHeaders();
+		assertEquals(3, actual.size());
+		assertEquals("BAR", actual.get("foo"));
+		assertEquals("baz", actual.get("bar"));
+	}
+
+	@Test
+	public void copyHeadersIfAbsent() {
+		Map<String, Object> map1 = new HashMap<>();
+		map1.put("foo", "bar");
+		GenericMessage<String> message = new GenericMessage<>("payload", map1);
+		MessageHeaderAccessor accessor = new MessageHeaderAccessor(message);
+
+		Map<String, Object> map2 = new HashMap<>();
+		map2.put("foo", "BAR");
+		map2.put("bar", "baz");
+		accessor.copyHeadersIfAbsent(map2);
+
+		MessageHeaders actual = accessor.getMessageHeaders();
+		assertEquals(3, actual.size());
+		assertEquals("bar", actual.get("foo"));
+		assertEquals("baz", actual.get("bar"));
+	}
+
+	@Test
 	public void copyHeadersFromNullMap() {
 		MessageHeaderAccessor headers = new MessageHeaderAccessor();
 		headers.copyHeaders(null);
@@ -100,7 +171,6 @@ public class MessageHeaderAccessorTests {
 
 	@Test
 	public void toMap() {
-
 		MessageHeaderAccessor accessor = new MessageHeaderAccessor();
 
 		accessor.setHeader("foo", "bar1");
@@ -262,7 +332,7 @@ public class MessageHeaderAccessorTests {
 		accessor.setContentType(MimeTypeUtils.TEXT_PLAIN);
 
 		assertEquals("headers={contentType=text/plain} payload=p", accessor.getShortLogMessage("p"));
-		assertEquals("headers={contentType=text/plain} payload=p", accessor.getShortLogMessage("p".getBytes(UTF_8)));
+		assertEquals("headers={contentType=text/plain} payload=p", accessor.getShortLogMessage("p".getBytes(StandardCharsets.UTF_8)));
 		assertEquals("headers={contentType=text/plain} payload=p", accessor.getShortLogMessage(new Object() {
 			@Override
 			public String toString() {
@@ -279,7 +349,7 @@ public class MessageHeaderAccessorTests {
 		String actual = accessor.getShortLogMessage(payload);
 		assertEquals("headers={contentType=text/plain} payload=" + sb + "...(truncated)", actual);
 
-		actual = accessor.getShortLogMessage(payload.getBytes(UTF_8));
+		actual = accessor.getShortLogMessage(payload.getBytes(StandardCharsets.UTF_8));
 		assertEquals("headers={contentType=text/plain} payload=" + sb + "...(truncated)", actual);
 
 		actual = accessor.getShortLogMessage(new Object() {
@@ -297,7 +367,7 @@ public class MessageHeaderAccessorTests {
 		accessor.setContentType(MimeTypeUtils.TEXT_PLAIN);
 
 		assertEquals("headers={contentType=text/plain} payload=p", accessor.getDetailedLogMessage("p"));
-		assertEquals("headers={contentType=text/plain} payload=p", accessor.getDetailedLogMessage("p".getBytes(UTF_8)));
+		assertEquals("headers={contentType=text/plain} payload=p", accessor.getDetailedLogMessage("p".getBytes(StandardCharsets.UTF_8)));
 		assertEquals("headers={contentType=text/plain} payload=p", accessor.getDetailedLogMessage(new Object() {
 			@Override
 			public String toString() {
@@ -314,7 +384,7 @@ public class MessageHeaderAccessorTests {
 		String actual = accessor.getDetailedLogMessage(payload);
 		assertEquals("headers={contentType=text/plain} payload=" + sb + " > 80", actual);
 
-		actual = accessor.getDetailedLogMessage(payload.getBytes(UTF_8));
+		actual = accessor.getDetailedLogMessage(payload.getBytes(StandardCharsets.UTF_8));
 		assertEquals("headers={contentType=text/plain} payload=" + sb + " > 80", actual);
 
 		actual = accessor.getDetailedLogMessage(new Object() {
@@ -325,7 +395,6 @@ public class MessageHeaderAccessorTests {
 		});
 		assertEquals("headers={contentType=text/plain} payload=" + sb + " > 80", actual);
 	}
-
 
 
 	public static class TestMessageHeaderAccessor extends MessageHeaderAccessor {

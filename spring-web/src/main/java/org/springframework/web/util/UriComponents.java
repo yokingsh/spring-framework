@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,6 +19,8 @@ package org.springframework.web.util;
 import java.io.Serializable;
 import java.io.UnsupportedEncodingException;
 import java.net.URI;
+import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
@@ -41,8 +43,6 @@ import org.springframework.util.MultiValueMap;
  */
 @SuppressWarnings("serial")
 public abstract class UriComponents implements Serializable {
-
-	private static final String DEFAULT_ENCODING = "UTF-8";
 
 	/** Captures URI template variable names. */
 	private static final Pattern NAMES_PATTERN = Pattern.compile("\\{([^/]+?)\\}");
@@ -123,7 +123,7 @@ public abstract class UriComponents implements Serializable {
 	 */
 	public final UriComponents encode() {
 		try {
-			return encode(DEFAULT_ENCODING);
+			return encode(StandardCharsets.UTF_8);
 		}
 		catch (UnsupportedEncodingException ex) {
 			// should not occur
@@ -134,11 +134,11 @@ public abstract class UriComponents implements Serializable {
 	/**
 	 * Encode all URI components using their specific encoding rules, and
 	 * returns the result as a new {@code UriComponents} instance.
-	 * @param encoding the encoding of the values contained in this map
+	 * @param charset the encoding of the values contained in this map
 	 * @return the encoded URI components
 	 * @throws UnsupportedEncodingException if the given encoding is not supported
 	 */
-	public abstract UriComponents encode(String encoding) throws UnsupportedEncodingException;
+	public abstract UriComponents encode(Charset charset) throws UnsupportedEncodingException;
 
 	/**
 	 * Replace all URI template variables with the values from a given map.
@@ -203,6 +203,12 @@ public abstract class UriComponents implements Serializable {
 		return toUriString();
 	}
 
+	/**
+	 * Set all components of the given UriComponentsBuilder.
+	 * @since 4.2
+	 */
+	protected abstract void copyToUriComponentsBuilder(UriComponentsBuilder builder);
+
 
 	// static expansion helpers
 
@@ -212,6 +218,9 @@ public abstract class UriComponents implements Serializable {
 		}
 		if (source.indexOf('{') == -1) {
 			return source;
+		}
+		if (source.indexOf(':') != -1) {
+			source = sanitizeSource(source);
 		}
 		Matcher matcher = NAMES_PATTERN.matcher(source);
 		StringBuffer sb = new StringBuffer();
@@ -227,6 +236,27 @@ public abstract class UriComponents implements Serializable {
 			matcher.appendReplacement(sb, replacement);
 		}
 		matcher.appendTail(sb);
+		return sb.toString();
+	}
+
+	/**
+	 * Remove nested "{}" such as in URI vars with regular expressions.
+	 */
+	private static String sanitizeSource(String source) {
+		int level = 0;
+		StringBuilder sb = new StringBuilder();
+		for (char c : source.toCharArray()) {
+			if (c == '{') {
+				level++;
+			}
+			if (c == '}') {
+				level--;
+			}
+			if (level > 1 || (level == 1 && c == '}')) {
+				continue;
+			}
+			sb.append(c);
+		}
 		return sb.toString();
 	}
 
@@ -246,7 +276,7 @@ public abstract class UriComponents implements Serializable {
 	 */
 	public interface UriTemplateVariables {
 
-		public static final Object SKIP_VALUE = UriTemplateVariables.class;
+		Object SKIP_VALUE = UriTemplateVariables.class;
 
 		/**
 		 * Get the value for the given URI variable name.

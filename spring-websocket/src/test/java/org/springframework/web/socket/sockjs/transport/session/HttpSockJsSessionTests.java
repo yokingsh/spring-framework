@@ -82,7 +82,7 @@ public class HttpSockJsSessionTests extends AbstractSockJsSessionTests<TestAbstr
 		this.session.handleInitialRequest(this.request, this.response, this.frameFormat);
 
 		assertEquals("hhh\no", this.servletResponse.getContentAsString());
-		assertFalse(this.servletRequest.isAsyncStarted());
+		assertTrue(this.servletRequest.isAsyncStarted());
 
 		verify(this.webSocketHandler).afterConnectionEstablished(this.session);
 	}
@@ -102,7 +102,7 @@ public class HttpSockJsSessionTests extends AbstractSockJsSessionTests<TestAbstr
 	}
 
 
-	static class TestAbstractHttpSockJsSession extends AbstractHttpSockJsSession {
+	static class TestAbstractHttpSockJsSession extends StreamingSockJsSession {
 
 		private IOException exceptionOnWriteFrame;
 
@@ -118,13 +118,8 @@ public class HttpSockJsSessionTests extends AbstractSockJsSessionTests<TestAbstr
 		}
 
 		@Override
-		protected boolean isStreaming() {
-			return false;
-		}
-
-		@Override
-		protected void writePrelude(ServerHttpRequest request, ServerHttpResponse response) throws IOException {
-			response.getBody().write("hhh\n".getBytes());
+		protected byte[] getPrelude(ServerHttpRequest request) {
+			return "hhh\n".getBytes();
 		}
 
 		public boolean wasCacheFlushed() {

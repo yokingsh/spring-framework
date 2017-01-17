@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -30,8 +30,6 @@ import org.springframework.expression.ParseException;
 import org.springframework.expression.PropertyAccessor;
 import org.springframework.expression.TypedValue;
 import org.springframework.expression.spel.AbstractExpressionTests;
-import org.springframework.expression.spel.SpelEvaluationException;
-import org.springframework.expression.spel.SpelMessage;
 import org.springframework.expression.spel.SpelUtilities;
 import org.springframework.expression.spel.ast.FormatHelper;
 import org.springframework.expression.spel.standard.SpelExpression;
@@ -263,16 +261,6 @@ public class ReflectionHelperTests extends AbstractExpressionTests {
 		args = new Object[] {3};
 		ReflectionHelper.convertAllArguments(tc, args, twoArg);
 		checkArguments(args,"3");
-
-		// missing converter
-		args = new Object[] {3, false, 3.0f};
-		try {
-			ReflectionHelper.convertAllArguments(null, args, twoArg);
-			fail("Should have failed because no converter supplied");
-		}
-		catch (SpelEvaluationException se) {
-			assertEquals(SpelMessage.TYPE_CONVERSION_ERROR,se.getMessageCode());
-		}
 
 		// null value
 		args = new Object[] {3, null, 3.0f};
@@ -547,7 +535,7 @@ public class ReflectionHelperTests extends AbstractExpressionTests {
 	}
 
 	private List<TypeDescriptor> getTypeDescriptors(Class<?>... types) {
-		List<TypeDescriptor> typeDescriptors = new ArrayList<TypeDescriptor>(types.length);
+		List<TypeDescriptor> typeDescriptors = new ArrayList<>(types.length);
 		for (Class<?> type : types) {
 			typeDescriptors.add(TypeDescriptor.valueOf(type));
 		}

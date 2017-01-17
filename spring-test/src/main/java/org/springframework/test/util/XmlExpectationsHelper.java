@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,14 +23,14 @@ import javax.xml.parsers.DocumentBuilderFactory;
 import javax.xml.transform.Source;
 import javax.xml.transform.dom.DOMSource;
 
-import org.custommonkey.xmlunit.Diff;
-import org.custommonkey.xmlunit.XMLUnit;
 import org.hamcrest.Matcher;
 import org.w3c.dom.Document;
 import org.w3c.dom.Node;
 import org.xml.sax.InputSource;
+import org.xmlunit.builder.DiffBuilder;
+import org.xmlunit.diff.Diff;
 
-import static org.springframework.test.util.MatcherAssertionErrors.*;
+import static org.hamcrest.MatcherAssert.*;
 
 /**
  * A helper class for assertions on XML content.
@@ -77,15 +77,12 @@ public class XmlExpectationsHelper {
 	 * @see org.springframework.test.web.servlet.result.MockMvcResultMatchers#xpath(String, Map, Object...)
 	 */
 	public void assertXmlEqual(String expected, String actual) throws Exception {
-		XMLUnit.setIgnoreWhitespace(true);
-		XMLUnit.setIgnoreComments(true);
-		XMLUnit.setIgnoreAttributeOrder(true);
-
-		Document control = XMLUnit.buildControlDocument(expected);
-		Document test = XMLUnit.buildTestDocument(actual);
-		Diff diff = new Diff(control, test);
-		if (!diff.similar()) {
-			AssertionErrors.fail("Body content " + diff.toString());
+		Diff diffSimilar = DiffBuilder.compare(expected).withTest(actual)
+				.ignoreWhitespace().ignoreComments()
+				.checkForSimilar()
+				.build();
+		if (diffSimilar.hasDifferences()) {
+			AssertionErrors.fail("Body content " + diffSimilar.toString());
 		}
 	}
 

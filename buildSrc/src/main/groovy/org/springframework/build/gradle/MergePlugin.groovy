@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2013 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -64,6 +64,7 @@ class MergePlugin implements Plugin<Project> {
 		project.plugins.apply(IdeaPlugin)
 
 		MergeModel model = project.extensions.create("merge", MergeModel)
+		model.project = project
 		project.configurations.create("merging")
 		Configuration runtimeMerge = project.configurations.create("runtimeMerge")
 
@@ -76,6 +77,7 @@ class MergePlugin implements Plugin<Project> {
 			if (it.merge.into != null) {
 				setup(it)
 			}
+			setupIdeDependencies(it)
 		}
 
 		// Hook to build runtimeMerge dependencies
@@ -114,6 +116,16 @@ class MergePlugin implements Plugin<Project> {
 		}
 	}
 
+	private void setupIdeDependencies(Project project) {
+		project.configurations.each { c ->
+			c.dependencies.findAll( { it instanceof org.gradle.api.artifacts.ProjectDependency } ).each { d ->
+				d.dependencyProject.merge.from.each { from ->
+					project.dependencies.add("runtimeMerge", from)
+				}
+			}
+		}
+	}
+
 	private void setupMaven(Project project) {
 		project.configurations.each { configuration ->
 			Conf2ScopeMapping mapping = project.conf2ScopeMappings.getMapping([configuration])
@@ -132,8 +144,9 @@ class MergePlugin implements Plugin<Project> {
 						intoConfiguration.dependencies.add(it)
 					}
 				}
+				def index = project.parent.childProjects.findIndexOf {p -> p.getValue() == project}
 				project.merge.into.install.repositories.mavenInstaller.pom.scopeMappings.addMapping(
-					mapping.priority + 100, intoConfiguration, mapping.scope)
+					mapping.priority + 100 + index, intoConfiguration, mapping.scope)
 			}
 		}
 	}
@@ -153,5 +166,12 @@ class MergePlugin implements Plugin<Project> {
 }
 
 class MergeModel {
+	Project project;
 	Project into;
+	List<Project> from = [];
+	
+	public void setInto(Project into) {
+		this.into = into;
+		into.merge.from.add(project);
+	}
 }

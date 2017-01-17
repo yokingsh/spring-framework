@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -56,11 +56,15 @@ public class SockJsServiceRegistration {
 
 	private Boolean webSocketEnabled;
 
-	private final List<TransportHandler> transportHandlers = new ArrayList<TransportHandler>();
+	private final List<TransportHandler> transportHandlers = new ArrayList<>();
 
-	private final List<TransportHandler> transportHandlerOverrides = new ArrayList<TransportHandler>();
+	private final List<TransportHandler> transportHandlerOverrides = new ArrayList<>();
 
-	private final List<HandshakeInterceptor> interceptors = new ArrayList<HandshakeInterceptor>();
+	private final List<HandshakeInterceptor> interceptors = new ArrayList<>();
+
+	private final List<String> allowedOrigins = new ArrayList<>();
+
+	private Boolean suppressCors;
 
 	private SockJsMessageCodec messageCodec;
 
@@ -195,9 +199,32 @@ public class SockJsServiceRegistration {
 	}
 
 	public SockJsServiceRegistration setInterceptors(HandshakeInterceptor... interceptors) {
+		this.interceptors.clear();
 		if (!ObjectUtils.isEmpty(interceptors)) {
 			this.interceptors.addAll(Arrays.asList(interceptors));
 		}
+		return this;
+	}
+
+	/**
+	 * @since 4.1.2
+	 */
+	protected SockJsServiceRegistration setAllowedOrigins(String... allowedOrigins) {
+		this.allowedOrigins.clear();
+		if (!ObjectUtils.isEmpty(allowedOrigins)) {
+			this.allowedOrigins.addAll(Arrays.asList(allowedOrigins));
+		}
+		return this;
+	}
+
+	/**
+	 * This option can be used to disable automatic addition of CORS headers for
+	 * SockJS requests.
+	 * <p>The default value is "false".
+	 * @since 4.1.2
+	 */
+	public SockJsServiceRegistration setSupressCors(boolean suppressCors) {
+		this.suppressCors = suppressCors;
 		return this;
 	}
 
@@ -236,6 +263,12 @@ public class SockJsServiceRegistration {
 		}
 		if (this.webSocketEnabled != null) {
 			service.setWebSocketEnabled(this.webSocketEnabled);
+		}
+		if (this.allowedOrigins != null) {
+			service.setAllowedOrigins(this.allowedOrigins);
+		}
+		if (this.suppressCors != null) {
+			service.setSuppressCors(this.suppressCors);
 		}
 		if (this.messageCodec != null) {
 			service.setMessageCodec(this.messageCodec);

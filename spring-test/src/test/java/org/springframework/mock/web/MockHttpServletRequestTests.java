@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -21,13 +21,18 @@ import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 
+import javax.servlet.http.Cookie;
+
+import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.ExpectedException;
 
 import org.springframework.util.StreamUtils;
 
@@ -40,16 +45,25 @@ import static org.junit.Assert.*;
  * @author Mark Fisher
  * @author Rossen Stoyanchev
  * @author Sam Brannen
+ * @author Brian Clozel
+ * @author Jakub Narloch
  */
 public class MockHttpServletRequestTests {
 
 	private static final String HOST = "Host";
 
-	private MockHttpServletRequest request = new MockHttpServletRequest();
+	private static final String CONTENT_TYPE = "Content-Type";
+
+	private static final String IF_MODIFIED_SINCE = "If-Modified-Since";
+
+	private final MockHttpServletRequest request = new MockHttpServletRequest();
+
+	@Rule
+	public final ExpectedException exception = ExpectedException.none();
 
 
 	@Test
-	public void content() throws IOException {
+	public void setContentAndGetInputStream() throws IOException {
 		byte[] bytes = "body".getBytes(Charset.defaultCharset());
 		request.setContent(bytes);
 		assertEquals(bytes.length, request.getContentLength());
@@ -58,10 +72,38 @@ public class MockHttpServletRequestTests {
 	}
 
 	@Test
+	public void setContentAndGetContentAsByteArray() throws IOException {
+		byte[] bytes = "request body".getBytes();
+		request.setContent(bytes);
+		assertEquals(bytes.length, request.getContentLength());
+		assertNotNull(request.getContentAsByteArray());
+		assertEquals(bytes, request.getContentAsByteArray());
+	}
+
+	@Test
+	public void getContentAsStringWithoutSettingCharacterEncoding() throws IOException {
+		exception.expect(IllegalStateException.class);
+		exception.expectMessage("Cannot get content as a String for a null character encoding");
+		request.getContentAsString();
+	}
+
+	@Test
+	public void setContentAndGetContentAsStringWithExplicitCharacterEncoding() throws IOException {
+		String palindrome = "ablE was I ere I saw Elba";
+		byte[] bytes = palindrome.getBytes("UTF-16");
+		request.setCharacterEncoding("UTF-16");
+		request.setContent(bytes);
+		assertEquals(bytes.length, request.getContentLength());
+		assertNotNull(request.getContentAsString());
+		assertEquals(palindrome, request.getContentAsString());
+	}
+
+	@Test
 	public void noContent() throws IOException {
 		assertEquals(-1, request.getContentLength());
 		assertNotNull(request.getInputStream());
 		assertEquals(-1, request.getInputStream().read());
+		assertNull(request.getContentAsByteArray());
 	}
 
 	@Test
@@ -69,7 +111,7 @@ public class MockHttpServletRequestTests {
 		String contentType = "test/plain";
 		request.setContentType(contentType);
 		assertEquals(contentType, request.getContentType());
-		assertEquals(contentType, request.getHeader("Content-Type"));
+		assertEquals(contentType, request.getHeader(CONTENT_TYPE));
 		assertNull(request.getCharacterEncoding());
 	}
 
@@ -78,7 +120,7 @@ public class MockHttpServletRequestTests {
 		String contentType = "test/plain;charset=UTF-8";
 		request.setContentType(contentType);
 		assertEquals(contentType, request.getContentType());
-		assertEquals(contentType, request.getHeader("Content-Type"));
+		assertEquals(contentType, request.getHeader(CONTENT_TYPE));
 		assertEquals("UTF-8", request.getCharacterEncoding());
 	}
 
@@ -87,7 +129,7 @@ public class MockHttpServletRequestTests {
 		String contentType = "test/plain";
 		request.addHeader("Content-Type", contentType);
 		assertEquals(contentType, request.getContentType());
-		assertEquals(contentType, request.getHeader("Content-Type"));
+		assertEquals(contentType, request.getHeader(CONTENT_TYPE));
 		assertNull(request.getCharacterEncoding());
 	}
 
@@ -96,7 +138,18 @@ public class MockHttpServletRequestTests {
 		String contentType = "test/plain;charset=UTF-8";
 		request.addHeader("Content-Type", contentType);
 		assertEquals(contentType, request.getContentType());
-		assertEquals(contentType, request.getHeader("Content-Type"));
+		assertEquals(contentType, request.getHeader(CONTENT_TYPE));
+		assertEquals("UTF-8", request.getCharacterEncoding());
+	}
+
+	// SPR-12677
+
+	@Test
+	public void setContentTypeHeaderWithMoreComplexCharsetSyntax() {
+		String contentType = "test/plain;charset=\"utf-8\";foo=\"charset=bar\";foocharset=bar;foo=bar";
+		request.addHeader("Content-Type", contentType);
+		assertEquals(contentType, request.getContentType());
+		assertEquals(contentType, request.getHeader(CONTENT_TYPE));
 		assertEquals("UTF-8", request.getCharacterEncoding());
 	}
 
@@ -105,7 +158,7 @@ public class MockHttpServletRequestTests {
 		request.setContentType("test/plain");
 		request.setCharacterEncoding("UTF-8");
 		assertEquals("test/plain", request.getContentType());
-		assertEquals("test/plain;charset=UTF-8", request.getHeader("Content-Type"));
+		assertEquals("test/plain;charset=UTF-8", request.getHeader(CONTENT_TYPE));
 		assertEquals("UTF-8", request.getCharacterEncoding());
 	}
 
@@ -114,7 +167,7 @@ public class MockHttpServletRequestTests {
 		request.setCharacterEncoding("UTF-8");
 		request.setContentType("test/plain");
 		assertEquals("test/plain", request.getContentType());
-		assertEquals("test/plain;charset=UTF-8", request.getHeader("Content-Type"));
+		assertEquals("test/plain;charset=UTF-8", request.getHeader(CONTENT_TYPE));
 		assertEquals("UTF-8", request.getCharacterEncoding());
 	}
 
@@ -137,7 +190,7 @@ public class MockHttpServletRequestTests {
 	public void setMultipleParameters() {
 		request.setParameter("key1", "value1");
 		request.setParameter("key2", "value2");
-		Map<String, Object> params = new HashMap<String, Object>(2);
+		Map<String, Object> params = new HashMap<>(2);
 		params.put("key1", "newValue1");
 		params.put("key3", new String[] { "value3A", "value3B" });
 		request.setParameters(params);
@@ -155,7 +208,7 @@ public class MockHttpServletRequestTests {
 	public void addMultipleParameters() {
 		request.setParameter("key1", "value1");
 		request.setParameter("key2", "value2");
-		Map<String, Object> params = new HashMap<String, Object>(2);
+		Map<String, Object> params = new HashMap<>(2);
 		params.put("key1", "newValue1");
 		params.put("key3", new String[] { "value3A", "value3B" });
 		request.addParameters(params);
@@ -173,13 +226,33 @@ public class MockHttpServletRequestTests {
 	@Test
 	public void removeAllParameters() {
 		request.setParameter("key1", "value1");
-		Map<String, Object> params = new HashMap<String, Object>(2);
+		Map<String, Object> params = new HashMap<>(2);
 		params.put("key2", "value2");
 		params.put("key3", new String[] { "value3A", "value3B" });
 		request.addParameters(params);
 		assertEquals(3, request.getParameterMap().size());
 		request.removeAllParameters();
 		assertEquals(0, request.getParameterMap().size());
+	}
+
+	@Test
+	public void cookies() {
+		Cookie cookie1 = new Cookie("foo", "bar");
+		Cookie cookie2 = new Cookie("baz", "qux");
+		request.setCookies(cookie1, cookie2);
+
+		Cookie[] cookies = request.getCookies();
+
+		assertEquals(2, cookies.length);
+		assertEquals("foo", cookies[0].getName());
+		assertEquals("bar", cookies[0].getValue());
+		assertEquals("baz", cookies[1].getName());
+		assertEquals("qux", cookies[1].getValue());
+	}
+
+	@Test
+	public void noCookies() {
+		assertNull(request.getCookies());
 	}
 
 	@Test
@@ -205,7 +278,7 @@ public class MockHttpServletRequestTests {
 
 	@Test(expected = IllegalArgumentException.class)
 	public void setPreferredLocalesWithEmptyList() {
-		request.setPreferredLocales(new ArrayList<Locale>());
+		request.setPreferredLocales(new ArrayList<>());
 	}
 
 	@Test
@@ -365,6 +438,44 @@ public class MockHttpServletRequestTests {
 		request.setScheme("https");
 		request.setSecure(true);
 		assertTrue(request.isSecure());
+	}
+
+	@Test
+	public void httpHeaderDate() throws Exception {
+		Date date = new Date();
+		request.addHeader(IF_MODIFIED_SINCE, date);
+		assertEquals(date.getTime(), request.getDateHeader(IF_MODIFIED_SINCE));
+	}
+
+	@Test
+	public void httpHeaderTimestamp() throws Exception {
+		long timestamp = new Date().getTime();
+		request.addHeader(IF_MODIFIED_SINCE, timestamp);
+		assertEquals(timestamp, request.getDateHeader(IF_MODIFIED_SINCE));
+	}
+
+	@Test
+	public void httpHeaderRfcFormatedDate() throws Exception {
+		request.addHeader(IF_MODIFIED_SINCE, "Tue, 21 Jul 2015 10:00:00 GMT");
+		assertEquals(1437472800000L, request.getDateHeader(IF_MODIFIED_SINCE));
+	}
+
+	@Test
+	public void httpHeaderFirstVariantFormatedDate() throws Exception {
+		request.addHeader(IF_MODIFIED_SINCE, "Tue, 21-Jul-15 10:00:00 GMT");
+		assertEquals(1437472800000L, request.getDateHeader(IF_MODIFIED_SINCE));
+	}
+
+	@Test
+	public void httpHeaderSecondVariantFormatedDate() throws Exception {
+		request.addHeader(IF_MODIFIED_SINCE, "Tue Jul 21 10:00:00 2015");
+		assertEquals(1437472800000L, request.getDateHeader(IF_MODIFIED_SINCE));
+	}
+
+	@Test(expected = IllegalArgumentException.class)
+	public void httpHeaderFormatedDateError() throws Exception {
+		request.addHeader(IF_MODIFIED_SINCE, "This is not a date");
+		request.getDateHeader(IF_MODIFIED_SINCE);
 	}
 
 	private void assertEqualEnumerations(Enumeration<?> enum1, Enumeration<?> enum2) {

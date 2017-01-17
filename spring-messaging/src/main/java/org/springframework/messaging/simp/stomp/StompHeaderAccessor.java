@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.messaging.simp.stomp;
 
 import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -28,22 +29,22 @@ import org.springframework.messaging.Message;
 import org.springframework.messaging.simp.SimpMessageHeaderAccessor;
 import org.springframework.messaging.simp.SimpMessageType;
 import org.springframework.messaging.support.MessageHeaderAccessor;
-import org.springframework.util.Assert;
+import org.springframework.util.ClassUtils;
+import org.springframework.util.CollectionUtils;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 import org.springframework.util.StringUtils;
 
 /**
- * A {@code MessageHeaderAccessor} to use when creating a {@code Message} from a
- * decoded STOMP frame, or when encoding a {@code Message} to a STOMP frame.
+ * A {@code MessageHeaderAccessor} to use when creating a {@code Message} from
+ * a decoded STOMP frame, or when encoding a {@code Message} to a STOMP frame.
  *
- * <p>When created from STOMP frame content, the actual STOMP headers are stored
- * in the native header sub-map managed by the parent class
+ * <p>When created from STOMP frame content, the actual STOMP headers are
+ * stored in the native header sub-map managed by the parent class
  * {@link org.springframework.messaging.support.NativeMessageHeaderAccessor}
- * while the parent class
- * {@link org.springframework.messaging.simp.SimpMessageHeaderAccessor} manages
- * common processing headers some of which are based on STOMP headers (e.g.
- * destination, content-type, etc).
+ * while the parent class {@link SimpMessageHeaderAccessor} manages common
+ * processing headers some of which are based on STOMP headers
+ * (e.g. destination, content-type, etc).
  *
  * <p>An instance of this class can also be created by wrapping an existing
  * {@code Message}. That message may have been created with the more generic
@@ -162,7 +163,7 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 		}
 	}
 
-	private void updateStompHeadersFromSimpMessageHeaders() {
+	void updateStompHeadersFromSimpMessageHeaders() {
 		if (getDestination() != null) {
 			setNativeHeader(STOMP_DESTINATION_HEADER, getDestination());
 		}
@@ -181,11 +182,13 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 	Map<String, List<String>> getNativeHeaders() {
 		@SuppressWarnings("unchecked")
 		Map<String, List<String>> map = (Map<String, List<String>>) getHeader(NATIVE_HEADERS);
-		return (map != null ? map : Collections.<String, List<String>>emptyMap());
+		return (map != null ? map : Collections.emptyMap());
 	}
 
 	public StompCommand updateStompCommandAsClientMessage() {
-		Assert.state(SimpMessageType.MESSAGE.equals(getMessageType()), "Unexpected message type " + getMessage());
+		if (getMessageType() != SimpMessageType.MESSAGE) {
+			throw new IllegalStateException("Unexpected message type " + getMessageType());
+		}
 		if (getCommand() == null) {
 			setHeader(COMMAND_HEADER, StompCommand.SEND);
 		}
@@ -196,7 +199,9 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 	}
 
 	public void updateStompCommandAsServerMessage() {
-		Assert.state(SimpMessageType.MESSAGE.equals(getMessageType()), "Unexpected message type " + getMessage());
+		if (getMessageType() != SimpMessageType.MESSAGE) {
+			throw new IllegalStateException("Unexpected message type " + getMessageType());
+		}
 		StompCommand command = getCommand();
 		if ((command == null) || StompCommand.SEND.equals(command)) {
 			setHeader(COMMAND_HEADER, StompCommand.MESSAGE);
@@ -206,7 +211,7 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 		}
 		trySetStompHeaderForSubscriptionId();
 		if (getMessageId() == null) {
-			String messageId = getSessionId() + "-" + messageIdCounter.getAndIncrement();
+			String messageId = getSessionId() + '-' + messageIdCounter.getAndIncrement();
 			setNativeHeader(STOMP_MESSAGE_ID_HEADER, messageId);
 		}
 	}
@@ -218,17 +223,26 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 		return (StompCommand) getHeader(COMMAND_HEADER);
 	}
 
-	public Set<String> getAcceptVersion() {
-		String rawValue = getFirstNativeHeader(STOMP_ACCEPT_VERSION_HEADER);
-		return (rawValue != null ? StringUtils.commaDelimitedListToSet(rawValue) : Collections.<String>emptySet());
-	}
-
 	public boolean isHeartbeat() {
 		return (SimpMessageType.HEARTBEAT == getMessageType());
 	}
 
+	public long[] getHeartbeat() {
+		String rawValue = getFirstNativeHeader(STOMP_HEARTBEAT_HEADER);
+		String[] rawValues = StringUtils.split(rawValue, ",");
+		if (rawValues == null) {
+			return Arrays.copyOf(DEFAULT_HEARTBEAT, 2);
+		}
+		return new long[] {Long.valueOf(rawValues[0]), Long.valueOf(rawValues[1])};
+	}
+
 	public void setAcceptVersion(String acceptVersion) {
 		setNativeHeader(STOMP_ACCEPT_VERSION_HEADER, acceptVersion);
+	}
+
+	public Set<String> getAcceptVersion() {
+		String rawValue = getFirstNativeHeader(STOMP_ACCEPT_VERSION_HEADER);
+		return (rawValue != null ? StringUtils.commaDelimitedListToSet(rawValue) : Collections.emptySet());
 	}
 
 	public void setHost(String host) {
@@ -245,15 +259,7 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 		setNativeHeader(STOMP_DESTINATION_HEADER, destination);
 	}
 
-	public long[] getHeartbeat() {
-		String rawValue = getFirstNativeHeader(STOMP_HEARTBEAT_HEADER);
-		if (!StringUtils.hasText(rawValue)) {
-			return Arrays.copyOf(DEFAULT_HEARTBEAT, 2);
-		}
-		String[] rawValues = StringUtils.commaDelimitedListToStringArray(rawValue);
-		return new long[] { Long.valueOf(rawValues[0]), Long.valueOf(rawValues[1])};
-	}
-
+	@Override
 	public void setContentType(MimeType contentType) {
 		super.setContentType(contentType);
 		setNativeHeader(STOMP_CONTENT_TYPE_HEADER, contentType.toString());
@@ -292,7 +298,7 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 	}
 
 	public void setHeartbeat(long cx, long cy) {
-		setNativeHeader(STOMP_HEARTBEAT_HEADER, StringUtils.arrayToCommaDelimitedString(new Object[]{cx, cy}));
+		setNativeHeader(STOMP_HEARTBEAT_HEADER, cx + "," + cy);
 	}
 
 	public void setAck(String ack) {
@@ -433,14 +439,17 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 	}
 
 	private String appendPayload(Object payload) {
-		Assert.isInstanceOf(byte[].class, payload);
+		if (payload.getClass() != byte[].class) {
+			throw new IllegalStateException(
+					"Expected byte array payload but got: " + ClassUtils.getQualifiedName(payload.getClass()));
+		}
 		byte[] bytes = (byte[]) payload;
 		String contentType = (getContentType() != null ? " " + getContentType().toString() : "");
 		if (bytes.length == 0 || getContentType() == null || !isReadableContentType()) {
 			return contentType;
 		}
-		Charset charset = getContentType().getCharSet();
-		charset = (charset != null ? charset : StompDecoder.UTF8_CHARSET);
+		Charset charset = getContentType().getCharset();
+		charset = (charset != null ? charset : StandardCharsets.UTF_8);
 		return (bytes.length < 80) ?
 				contentType + " payload=" + new String(bytes, charset) :
 				contentType + " payload=" + new String(Arrays.copyOf(bytes, 80), charset) + "...(truncated)";
@@ -494,12 +503,8 @@ public class StompHeaderAccessor extends SimpMessageHeaderAccessor {
 	}
 
 	public static Integer getContentLength(Map<String, List<String>> nativeHeaders) {
-		if (nativeHeaders.containsKey(STOMP_CONTENT_LENGTH_HEADER)) {
-			List<String> values = nativeHeaders.get(STOMP_CONTENT_LENGTH_HEADER);
-			String value = (values != null ? values.get(0) : null);
-			return Integer.valueOf(value);
-		}
-		return null;
+		List<String> values = nativeHeaders.get(STOMP_CONTENT_LENGTH_HEADER);
+		return (!CollectionUtils.isEmpty(values) ? Integer.valueOf(values.get(0)) : null);
 	}
 
 

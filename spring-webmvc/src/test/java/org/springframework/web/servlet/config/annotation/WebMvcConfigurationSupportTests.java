@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -18,33 +18,35 @@ package org.springframework.web.servlet.config.annotation;
 
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import javax.servlet.http.HttpServletRequest;
 
-import com.fasterxml.jackson.databind.DeserializationFeature;
-import com.fasterxml.jackson.databind.MapperFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.xml.XmlMapper;
 import org.joda.time.DateTime;
 import org.junit.Test;
 
 import org.springframework.beans.DirectFieldAccessor;
-import org.springframework.beans.factory.BeanFactoryUtils;
 import org.springframework.context.ApplicationContext;
+import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Scope;
 import org.springframework.context.annotation.ScopedProxyMode;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.context.support.StaticMessageSource;
+import org.springframework.core.MethodParameter;
 import org.springframework.core.Ordered;
 import org.springframework.core.convert.ConversionService;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.format.annotation.DateTimeFormat.ISO;
 import org.springframework.format.support.FormattingConversionService;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.converter.HttpMessageConverter;
 import org.springframework.http.converter.json.AbstractJackson2HttpMessageConverter;
 import org.springframework.http.converter.xml.MappingJackson2XmlHttpMessageConverter;
 import org.springframework.mock.web.test.MockHttpServletRequest;
+import org.springframework.mock.web.test.MockHttpServletResponse;
 import org.springframework.mock.web.test.MockServletContext;
 import org.springframework.stereotype.Controller;
 import org.springframework.util.AntPathMatcher;
@@ -53,9 +55,15 @@ import org.springframework.validation.Validator;
 import org.springframework.validation.beanvalidation.LocalValidatorFactoryBean;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.support.ConfigurableWebBindingInitializer;
+import org.springframework.web.bind.support.WebDataBinderFactory;
+import org.springframework.web.context.request.NativeWebRequest;
 import org.springframework.web.context.support.AnnotationConfigWebApplicationContext;
 import org.springframework.web.method.support.CompositeUriComponentsContributor;
+import org.springframework.web.method.support.HandlerMethodArgumentResolver;
+import org.springframework.web.method.support.HandlerMethodReturnValueHandler;
+import org.springframework.web.method.support.ModelAndViewContainer;
 import org.springframework.web.servlet.HandlerExceptionResolver;
 import org.springframework.web.servlet.HandlerExecutionChain;
 import org.springframework.web.servlet.ViewResolver;
@@ -65,6 +73,7 @@ import org.springframework.web.servlet.handler.ConversionServiceExposingIntercep
 import org.springframework.web.servlet.handler.HandlerExceptionResolverComposite;
 import org.springframework.web.servlet.mvc.annotation.ResponseStatusExceptionResolver;
 import org.springframework.web.servlet.mvc.method.annotation.ExceptionHandlerExceptionResolver;
+import org.springframework.web.servlet.mvc.method.annotation.JsonViewRequestBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.JsonViewResponseBodyAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.MvcUriComponentsBuilder;
 import org.springframework.web.servlet.mvc.method.annotation.RequestMappingHandlerAdapter;
@@ -76,17 +85,24 @@ import org.springframework.web.servlet.view.InternalResourceViewResolver;
 import org.springframework.web.servlet.view.ViewResolverComposite;
 import org.springframework.web.util.UrlPathHelper;
 
-import static org.junit.Assert.*;
+import static com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES;
+import static com.fasterxml.jackson.databind.MapperFeature.DEFAULT_VIEW_INCLUSION;
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 /**
- * A test fixture with an {@link WebMvcConfigurationSupport} instance.
+ * Integration tests for {@link WebMvcConfigurationSupport} (imported via
+ * {@link EnableWebMvc @EnableWebMvc}).
  *
  * @author Rossen Stoyanchev
  * @author Juergen Hoeller
  * @author Sebastien Deleuze
+ * @author Sam Brannen
  */
 public class WebMvcConfigurationSupportTests {
-
 
 	@Test
 	public void requestMappingHandlerMapping() throws Exception {
@@ -100,10 +116,10 @@ public class WebMvcConfigurationSupportTests {
 		assertEquals(ConversionServiceExposingInterceptor.class, chain.getInterceptors()[0].getClass());
 
 		chain = handlerMapping.getHandler(new MockHttpServletRequest("GET", "/scoped"));
-		assertNotNull(chain);
+		assertNotNull("HandlerExecutionChain for '/scoped' mapping should not be null.", chain);
 
 		chain = handlerMapping.getHandler(new MockHttpServletRequest("GET", "/scopedProxy"));
-		assertNotNull(chain);
+		assertNotNull("HandlerExecutionChain for '/scopedProxy' mapping should not be null.", chain);
 	}
 
 	@Test
@@ -126,6 +142,7 @@ public class WebMvcConfigurationSupportTests {
 		HttpServletRequest request = new MockHttpServletRequest("GET", "/testController");
 		HandlerExecutionChain chain = handlerMapping.getHandler(request);
 
+		assertNotNull(chain);
 		assertNotNull(chain.getInterceptors());
 		assertEquals(3, chain.getInterceptors().length);
 		assertEquals(ConversionServiceExposingInterceptor.class, chain.getInterceptors()[1].getClass());
@@ -158,20 +175,21 @@ public class WebMvcConfigurationSupportTests {
 		ApplicationContext context = initContext(WebConfig.class);
 		RequestMappingHandlerAdapter adapter = context.getBean(RequestMappingHandlerAdapter.class);
 		List<HttpMessageConverter<?>> converters = adapter.getMessageConverters();
-		assertEquals(9, converters.size());
-		for(HttpMessageConverter<?> converter : converters) {
-			if(converter instanceof AbstractJackson2HttpMessageConverter) {
-				ObjectMapper objectMapper = ((AbstractJackson2HttpMessageConverter)converter).getObjectMapper();
-				assertFalse(objectMapper.getDeserializationConfig().isEnabled(MapperFeature.DEFAULT_VIEW_INCLUSION));
-				assertFalse(objectMapper.getSerializationConfig().isEnabled(MapperFeature.DEFAULT_VIEW_INCLUSION));
-				assertFalse(objectMapper.getDeserializationConfig().isEnabled(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES));
-				if(converter instanceof MappingJackson2XmlHttpMessageConverter) {
-					assertEquals(XmlMapper.class, objectMapper.getClass());
-				}
-			}
-		}
+		assertEquals(11, converters.size());
+		converters.stream()
+				.filter(converter -> converter instanceof AbstractJackson2HttpMessageConverter)
+				.forEach(converter -> {
+					ObjectMapper mapper = ((AbstractJackson2HttpMessageConverter) converter).getObjectMapper();
+					assertFalse(mapper.getDeserializationConfig().isEnabled(DEFAULT_VIEW_INCLUSION));
+					assertFalse(mapper.getSerializationConfig().isEnabled(DEFAULT_VIEW_INCLUSION));
+					assertFalse(mapper.getDeserializationConfig().isEnabled(FAIL_ON_UNKNOWN_PROPERTIES));
+					if (converter instanceof MappingJackson2XmlHttpMessageConverter) {
+						assertEquals(XmlMapper.class, mapper.getClass());
+					}
+				});
 
-		ConfigurableWebBindingInitializer initializer = (ConfigurableWebBindingInitializer) adapter.getWebBindingInitializer();
+		ConfigurableWebBindingInitializer initializer =
+				(ConfigurableWebBindingInitializer) adapter.getWebBindingInitializer();
 		assertNotNull(initializer);
 
 		ConversionService conversionService = initializer.getConversionService();
@@ -183,9 +201,11 @@ public class WebMvcConfigurationSupportTests {
 		assertTrue(validator instanceof LocalValidatorFactoryBean);
 
 		DirectFieldAccessor fieldAccessor = new DirectFieldAccessor(adapter);
-		List<Object> interceptors = (List<Object>) fieldAccessor.getPropertyValue("responseBodyAdvice");
-		assertEquals(1, interceptors.size());
-		assertEquals(JsonViewResponseBodyAdvice.class, interceptors.get(0).getClass());
+		@SuppressWarnings("unchecked")
+		List<Object> bodyAdvice = (List<Object>) fieldAccessor.getPropertyValue("requestResponseBodyAdvice");
+		assertEquals(2, bodyAdvice.size());
+		assertEquals(JsonViewRequestBodyAdvice.class, bodyAdvice.get(0).getClass());
+		assertEquals(JsonViewResponseBodyAdvice.class, bodyAdvice.get(1).getClass());
 	}
 
 	@Test
@@ -199,13 +219,13 @@ public class WebMvcConfigurationSupportTests {
 	}
 
 	@Test
+	@SuppressWarnings("unchecked")
 	public void handlerExceptionResolver() throws Exception {
 		ApplicationContext context = initContext(WebConfig.class);
 		HandlerExceptionResolverComposite compositeResolver =
-			context.getBean("handlerExceptionResolver", HandlerExceptionResolverComposite.class);
+				context.getBean("handlerExceptionResolver", HandlerExceptionResolverComposite.class);
 
 		assertEquals(0, compositeResolver.getOrder());
-
 		List<HandlerExceptionResolver> expectedResolvers = compositeResolver.getExceptionResolvers();
 
 		assertEquals(ExceptionHandlerExceptionResolver.class, expectedResolvers.get(0).getClass());
@@ -219,15 +239,50 @@ public class WebMvcConfigurationSupportTests {
 		List<Object> interceptors = (List<Object>) fieldAccessor.getPropertyValue("responseBodyAdvice");
 		assertEquals(1, interceptors.size());
 		assertEquals(JsonViewResponseBodyAdvice.class, interceptors.get(0).getClass());
+
+		LocaleContextHolder.setLocale(Locale.ENGLISH);
+		try {
+			ResponseStatusExceptionResolver rser = (ResponseStatusExceptionResolver) expectedResolvers.get(1);
+			MockHttpServletRequest request = new MockHttpServletRequest("GET", "/");
+			MockHttpServletResponse response = new MockHttpServletResponse();
+			rser.resolveException(request, response, context.getBean(TestController.class), new UserAlreadyExistsException());
+			assertEquals("User already exists!", response.getErrorMessage());
+		}
+		finally {
+			LocaleContextHolder.resetLocaleContext();
+		}
 	}
+
+	@Test
+	public void customArgumentResolvers() {
+		ApplicationContext context = initContext(CustomArgumentResolverConfig.class);
+		RequestMappingHandlerAdapter adapter = context.getBean(RequestMappingHandlerAdapter.class);
+		HandlerExceptionResolverComposite composite = context.getBean(HandlerExceptionResolverComposite.class);
+
+		assertNotNull(adapter);
+		assertEquals(1, adapter.getCustomArgumentResolvers().size());
+		assertEquals(TestArgumentResolver.class, adapter.getCustomArgumentResolvers().get(0).getClass());
+		assertEquals(1, adapter.getCustomReturnValueHandlers().size());
+		assertEquals(TestReturnValueHandler.class, adapter.getCustomReturnValueHandlers().get(0).getClass());
+
+		assertNotNull(composite);
+		assertEquals(3, composite.getExceptionResolvers().size());
+		assertEquals(ExceptionHandlerExceptionResolver.class, composite.getExceptionResolvers().get(0).getClass());
+
+		ExceptionHandlerExceptionResolver resolver =
+				(ExceptionHandlerExceptionResolver) composite.getExceptionResolvers().get(0);
+
+		assertEquals(1, resolver.getCustomArgumentResolvers().size());
+		assertEquals(TestArgumentResolver.class, resolver.getCustomArgumentResolvers().get(0).getClass());
+		assertEquals(1, resolver.getCustomReturnValueHandlers().size());
+		assertEquals(TestReturnValueHandler.class, resolver.getCustomReturnValueHandlers().get(0).getClass());
+	}
+
 
 	@Test
 	public void mvcViewResolver() {
 		ApplicationContext context = initContext(WebConfig.class);
 		ViewResolverComposite resolver = context.getBean("mvcViewResolver", ViewResolverComposite.class);
-
-		Map<String, ViewResolver> map = BeanFactoryUtils.beansOfTypeIncludingAncestors(
-				context, ViewResolver.class, true, false);
 
 		assertNotNull(resolver);
 		assertEquals(1, resolver.getViewResolvers().size());
@@ -251,9 +306,6 @@ public class WebMvcConfigurationSupportTests {
 		ApplicationContext context = initContext(CustomViewResolverOrderConfig.class);
 		ViewResolverComposite resolver = context.getBean("mvcViewResolver", ViewResolverComposite.class);
 
-		Map<String, ViewResolver> map = BeanFactoryUtils.beansOfTypeIncludingAncestors(
-				context, ViewResolver.class, true, false);
-
 		assertNotNull(resolver);
 		assertEquals(1, resolver.getViewResolvers().size());
 		assertEquals(InternalResourceViewResolver.class, resolver.getViewResolvers().get(0).getClass());
@@ -271,8 +323,7 @@ public class WebMvcConfigurationSupportTests {
 		assertEquals(AntPathMatcher.class, pathMatcher.getClass());
 	}
 
-
-	private ApplicationContext initContext(Class... configClasses) {
+	private ApplicationContext initContext(Class<?>... configClasses) {
 		AnnotationConfigWebApplicationContext context = new AnnotationConfigWebApplicationContext();
 		context.setServletContext(new MockServletContext());
 		context.register(configClasses);
@@ -283,16 +334,24 @@ public class WebMvcConfigurationSupportTests {
 
 	@EnableWebMvc
 	@Configuration
-	public static class WebConfig {
+	static class WebConfig {
 
-		@Bean(name="/testController")
+		@Bean("/testController")
 		public TestController testController() {
 			return new TestController();
 		}
+
+		@Bean
+		public MessageSource messageSource() {
+			StaticMessageSource messageSource = new StaticMessageSource();
+			messageSource.addMessage("exception.user.exists", Locale.ENGLISH, "User already exists!");
+			return messageSource;
+		}
 	}
 
+
 	@Configuration
-	public static class ViewResolverConfig {
+	static class ViewResolverConfig {
 
 		@Bean
 		public ViewResolver beanNameViewResolver() {
@@ -300,9 +359,10 @@ public class WebMvcConfigurationSupportTests {
 		}
 	}
 
+
 	@EnableWebMvc
 	@Configuration
-	public static class CustomViewResolverOrderConfig extends WebMvcConfigurerAdapter {
+	static class CustomViewResolverOrderConfig extends WebMvcConfigurerAdapter {
 
 		@Override
 		public void configureViewResolvers(ViewResolverRegistry registry) {
@@ -311,8 +371,24 @@ public class WebMvcConfigurationSupportTests {
 		}
 	}
 
+	@EnableWebMvc
+	@Configuration
+	static class CustomArgumentResolverConfig extends WebMvcConfigurerAdapter {
+
+		@Override
+		public void addArgumentResolvers(List<HandlerMethodArgumentResolver> resolvers) {
+			resolvers.add(new TestArgumentResolver());
+		}
+
+		@Override
+		public void addReturnValueHandlers(List<HandlerMethodReturnValueHandler> handlers) {
+			handlers.add(new TestReturnValueHandler());
+		}
+	}
+
+
 	@Controller
-	public static class TestController {
+	private static class TestController {
 
 		@RequestMapping("/")
 		public void handle() {
@@ -328,7 +404,7 @@ public class WebMvcConfigurationSupportTests {
 
 	@Controller
 	@Scope("prototype")
-	public static class ScopedController {
+	private static class ScopedController {
 
 		@RequestMapping("/scoped")
 		public void handle() {
@@ -337,11 +413,44 @@ public class WebMvcConfigurationSupportTests {
 
 
 	@Controller
-	@Scope(value="prototype", proxyMode=ScopedProxyMode.TARGET_CLASS)
-	public static class ScopedProxyController {
+	@Scope(scopeName = "prototype", proxyMode = ScopedProxyMode.TARGET_CLASS)
+	static class ScopedProxyController {
 
 		@RequestMapping("/scopedProxy")
 		public void handle() {
+		}
+	}
+
+
+	@ResponseStatus(code = HttpStatus.BAD_REQUEST, reason = "exception.user.exists")
+	@SuppressWarnings("serial")
+	private static class UserAlreadyExistsException extends RuntimeException {
+	}
+
+	private static class TestArgumentResolver implements HandlerMethodArgumentResolver {
+
+		@Override
+		public boolean supportsParameter(MethodParameter parameter) {
+			return false;
+		}
+
+		@Override
+		public Object resolveArgument(MethodParameter parameter, ModelAndViewContainer container,
+				NativeWebRequest request, WebDataBinderFactory factory) {
+			return null;
+		}
+	}
+
+	private static class TestReturnValueHandler implements HandlerMethodReturnValueHandler {
+
+		@Override
+		public boolean supportsReturnType(MethodParameter returnType) {
+			return false;
+		}
+
+		@Override
+		public void handleReturnValue(Object value, MethodParameter parameter,
+				ModelAndViewContainer container, NativeWebRequest request) {
 		}
 	}
 

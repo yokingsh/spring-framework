@@ -22,6 +22,7 @@ import javax.cache.annotation.CacheRemove;
 import javax.cache.annotation.CacheRemoveAll;
 import javax.cache.annotation.CacheResult;
 
+import org.aspectj.lang.annotation.RequiredTypes;
 import org.aspectj.lang.annotation.SuppressAjWarnings;
 import org.aspectj.lang.reflect.MethodSignature;
 
@@ -43,6 +44,7 @@ import org.springframework.cache.jcache.interceptor.JCacheAspectSupport;
  * @author Stephane Nicoll
  * @since 4.1
  */
+@RequiredTypes({"org.springframework.cache.jcache.interceptor.JCacheAspectSupport", "javax.cache.annotation.CacheResult"})
 public aspect JCacheCacheAspect extends JCacheAspectSupport {
 
 	@SuppressAjWarnings("adviceDidNotMatch")
@@ -106,17 +108,5 @@ public aspect JCacheCacheAspect extends JCacheAspectSupport {
 	private pointcut executionOfCacheRemoveAllMethod() :
 		execution(@CacheRemoveAll * *(..));
 
-
-	private static class AnyThrow {
-
-		private static void throwUnchecked(Throwable e) {
-			AnyThrow.<RuntimeException>throwAny(e);
-		}
-
-		@SuppressWarnings("unchecked")
-		private static <E extends Throwable> void throwAny(Throwable e) throws E {
-			throw (E)e;
-		}
-	}
 
 }

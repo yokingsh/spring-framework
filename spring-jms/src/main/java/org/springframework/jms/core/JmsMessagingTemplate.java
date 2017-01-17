@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 package org.springframework.jms.core;
 
 import java.util.Map;
+import javax.jms.ConnectionFactory;
 import javax.jms.Destination;
 import javax.jms.JMSException;
 import javax.jms.Session;
@@ -39,6 +40,7 @@ import org.springframework.util.Assert;
  * An implementation of {@link JmsMessageOperations}.
  *
  * @author Stephane Nicoll
+ * @author Juergen Hoeller
  * @since 4.1
  */
 public class JmsMessagingTemplate extends AbstractMessagingTemplate<Destination>
@@ -53,19 +55,49 @@ public class JmsMessagingTemplate extends AbstractMessagingTemplate<Destination>
 
 	/**
 	 * Constructor for use with bean properties.
-	 * Requires {@link #setJmsTemplate} to be called.
+	 * Requires {@link #setConnectionFactory} or {@link #setJmsTemplate} to be called.
 	 */
 	public JmsMessagingTemplate() {
 	}
 
 	/**
-	 * Create an instance with the {@link JmsTemplate} to use.
+	 * Create a {@code JmsMessagingTemplate} instance with the JMS {@link ConnectionFactory}
+	 * to use, implicitly building a {@link JmsTemplate} based on it.
+	 * @since 4.1.2
+	 */
+	public JmsMessagingTemplate(ConnectionFactory connectionFactory) {
+		this.jmsTemplate = new JmsTemplate(connectionFactory);
+	}
+
+	/**
+	 * Create a {@code JmsMessagingTemplate} instance with the {@link JmsTemplate} to use.
 	 */
 	public JmsMessagingTemplate(JmsTemplate jmsTemplate) {
 		Assert.notNull("JmsTemplate must not be null");
 		this.jmsTemplate = jmsTemplate;
 	}
 
+
+	/**
+	 * Set the ConnectionFactory to use for the underlying {@link JmsTemplate}.
+	 * @since 4.1.2
+	 */
+	public void setConnectionFactory(ConnectionFactory connectionFactory) {
+		if (this.jmsTemplate != null) {
+			this.jmsTemplate.setConnectionFactory(connectionFactory);
+		}
+		else {
+			this.jmsTemplate = new JmsTemplate(connectionFactory);
+		}
+	}
+
+	/**
+	 * Return the ConnectionFactory that the underlying {@link JmsTemplate} uses.
+	 * @since 4.1.2
+	 */
+	public ConnectionFactory getConnectionFactory() {
+		return (this.jmsTemplate != null ? this.jmsTemplate.getConnectionFactory() : null);
+	}
 
 	/**
 	 * Set the {@link JmsTemplate} to use.
@@ -88,10 +120,11 @@ public class JmsMessagingTemplate extends AbstractMessagingTemplate<Destination>
 	 * to convert the payload of the message.
 	 * <p>Consider configuring a {@link MessagingMessageConverter} with a different
 	 * {@link MessagingMessageConverter#setPayloadConverter(MessageConverter) payload converter}
-	 * for more advanced scenario.
+	 * for more advanced scenarios.
 	 * @see org.springframework.jms.support.converter.MessagingMessageConverter
 	 */
 	public void setJmsMessageConverter(MessageConverter jmsMessageConverter) {
+		Assert.notNull(jmsMessageConverter, "MessageConverter must not be null");
 		this.jmsMessageConverter = jmsMessageConverter;
 	}
 
@@ -122,8 +155,7 @@ public class JmsMessagingTemplate extends AbstractMessagingTemplate<Destination>
 
 	@Override
 	public void afterPropertiesSet() {
-		Assert.notNull(getJmsTemplate(), "Property 'jmsTemplate' is required");
-		Assert.notNull(getJmsMessageConverter(), "Property 'jmsMessageConverter' is required");
+		Assert.notNull(getJmsTemplate(), "Property 'connectionFactory' or 'jmsTemplate' is required");
 	}
 
 
@@ -375,7 +407,6 @@ public class JmsMessagingTemplate extends AbstractMessagingTemplate<Destination>
 		}
 	}
 
-	@SuppressWarnings("ThrowableResultOfMethodCallIgnored")
 	protected MessagingException convertJmsException(JmsException ex) {
 		if (ex instanceof org.springframework.jms.support.destination.DestinationResolutionException ||
 				ex instanceof InvalidDestinationException) {

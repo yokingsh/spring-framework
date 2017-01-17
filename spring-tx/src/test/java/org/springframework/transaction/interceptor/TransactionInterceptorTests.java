@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2012 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -34,9 +34,6 @@ import org.springframework.util.SerializationTestUtils;
 
 import static org.junit.Assert.*;
 import static org.mockito.BDDMockito.*;
-import static org.mockito.Mockito.mock;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
 
 /**
  * Mock object based tests for TransactionInterceptor.
@@ -124,9 +121,33 @@ public class TransactionInterceptorTests extends AbstractTransactionAspectTests 
 	}
 
 	@Test
+	public void determineTransactionManagerWithNoBeanFactory() {
+		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManager(transactionManager, null);
+
+		assertSame(transactionManager, ti.determineTransactionManager(new DefaultTransactionAttribute()));
+	}
+
+	@Test
+	public void determineTransactionManagerWithNoBeanFactoryAndNoTransactionAttribute() {
+		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManager(transactionManager, null);
+
+		assertSame(transactionManager, ti.determineTransactionManager(null));
+	}
+
+	@Test
+	public void determineTransactionManagerWithNoTransactionAttribute() {
+		BeanFactory beanFactory = mock(BeanFactory.class);
+		TransactionInterceptor ti = simpleTransactionInterceptor(beanFactory);
+
+		assertNull(ti.determineTransactionManager(null));
+	}
+
+	@Test
 	public void determineTransactionManagerWithQualifierUnknown() {
 		BeanFactory beanFactory = mock(BeanFactory.class);
-		TransactionInterceptor ti = createTestTransactionInterceptor(beanFactory);
+		TransactionInterceptor ti = simpleTransactionInterceptor(beanFactory);
 		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
 		attribute.setQualifier("fooTransactionManager");
 
@@ -136,13 +157,54 @@ public class TransactionInterceptorTests extends AbstractTransactionAspectTests 
 	}
 
 	@Test
+	public void determineTransactionManagerWithQualifierAndDefault() {
+		BeanFactory beanFactory = mock(BeanFactory.class);
+		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManager(transactionManager, beanFactory);
+		PlatformTransactionManager fooTransactionManager =
+				associateTransactionManager(beanFactory, "fooTransactionManager");
+
+		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
+		attribute.setQualifier("fooTransactionManager");
+
+		assertSame(fooTransactionManager, ti.determineTransactionManager(attribute));
+	}
+
+	@Test
+	public void determineTransactionManagerWithQualifierAndDefaultName() {
+		BeanFactory beanFactory = mock(BeanFactory.class);
+		associateTransactionManager(beanFactory, "defaultTransactionManager");
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManagerName(
+				"defaultTransactionManager", beanFactory);
+
+		PlatformTransactionManager fooTransactionManager =
+				associateTransactionManager(beanFactory, "fooTransactionManager");
+		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
+		attribute.setQualifier("fooTransactionManager");
+
+		assertSame(fooTransactionManager, ti.determineTransactionManager(attribute));
+	}
+
+	@Test
+	public void determineTransactionManagerWithEmptyQualifierAndDefaultName() {
+		BeanFactory beanFactory = mock(BeanFactory.class);
+		PlatformTransactionManager defaultTransactionManager
+				= associateTransactionManager(beanFactory, "defaultTransactionManager");
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManagerName(
+				"defaultTransactionManager", beanFactory);
+
+		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
+		attribute.setQualifier("");
+
+		assertSame(defaultTransactionManager, ti.determineTransactionManager(attribute));
+	}
+
+	@Test
 	public void determineTransactionManagerWithQualifierSeveralTimes() {
 		BeanFactory beanFactory = mock(BeanFactory.class);
-		TransactionInterceptor ti = createTestTransactionInterceptor(beanFactory);
+		TransactionInterceptor ti = simpleTransactionInterceptor(beanFactory);
 
-		PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
-		given(beanFactory.containsBean("fooTransactionManager")).willReturn(true);
-		given(beanFactory.getBean("fooTransactionManager", PlatformTransactionManager.class)).willReturn(txManager);
+		PlatformTransactionManager txManager = associateTransactionManager(beanFactory, "fooTransactionManager");
 
 		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
 		attribute.setQualifier("fooTransactionManager");
@@ -159,11 +221,10 @@ public class TransactionInterceptorTests extends AbstractTransactionAspectTests 
 	@Test
 	public void determineTransactionManagerWithBeanNameSeveralTimes() {
 		BeanFactory beanFactory = mock(BeanFactory.class);
-		TransactionInterceptor ti = createTestTransactionInterceptor(beanFactory);
-		ti.setTransactionManagerBeanName("fooTransactionManager");
+		TransactionInterceptor ti = transactionInterceptorWithTransactionManagerName(
+				"fooTransactionManager", beanFactory);
 
-		PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
-		given(beanFactory.getBean("fooTransactionManager", PlatformTransactionManager.class)).willReturn(txManager);
+		PlatformTransactionManager txManager = 	associateTransactionManager(beanFactory, "fooTransactionManager");
 
 		DefaultTransactionAttribute attribute = new DefaultTransactionAttribute();
 		PlatformTransactionManager actual = ti.determineTransactionManager(attribute);
@@ -178,7 +239,7 @@ public class TransactionInterceptorTests extends AbstractTransactionAspectTests 
 	@Test
 	public void determineTransactionManagerDefaultSeveralTimes() {
 		BeanFactory beanFactory = mock(BeanFactory.class);
-		TransactionInterceptor ti = createTestTransactionInterceptor(beanFactory);
+		TransactionInterceptor ti = simpleTransactionInterceptor(beanFactory);
 
 		PlatformTransactionManager txManager = mock(PlatformTransactionManager.class);
 		given(beanFactory.getBean(PlatformTransactionManager.class)).willReturn(txManager);
@@ -193,12 +254,45 @@ public class TransactionInterceptorTests extends AbstractTransactionAspectTests 
 		verify(beanFactory, times(1)).getBean(PlatformTransactionManager.class);
 	}
 
-	private TransactionInterceptor createTestTransactionInterceptor(BeanFactory beanFactory) {
+	private TransactionInterceptor createTransactionInterceptor(BeanFactory beanFactory,
+			String transactionManagerName, PlatformTransactionManager transactionManager) {
 		TransactionInterceptor ti = new TransactionInterceptor();
-		ti.setBeanFactory(beanFactory);
+		if (beanFactory != null) {
+			ti.setBeanFactory(beanFactory);
+		}
+		if (transactionManagerName != null) {
+			ti.setTransactionManagerBeanName(transactionManagerName);
+
+		}
+		if (transactionManager != null) {
+			ti.setTransactionManager(transactionManager);
+		}
 		ti.setTransactionAttributeSource(new NameMatchTransactionAttributeSource());
 		ti.afterPropertiesSet();
 		return ti;
+	}
+
+	private TransactionInterceptor transactionInterceptorWithTransactionManager(
+			PlatformTransactionManager transactionManager, BeanFactory beanFactory) {
+
+		return createTransactionInterceptor(beanFactory, null, transactionManager);
+	}
+
+	private TransactionInterceptor transactionInterceptorWithTransactionManagerName(
+			String transactionManagerName, BeanFactory beanFactory) {
+
+		return createTransactionInterceptor(beanFactory, transactionManagerName, null);
+	}
+
+	private TransactionInterceptor simpleTransactionInterceptor(BeanFactory beanFactory) {
+		return createTransactionInterceptor(beanFactory, null, null);
+	}
+
+	private PlatformTransactionManager associateTransactionManager(BeanFactory beanFactory, String name) {
+		PlatformTransactionManager transactionManager = mock(PlatformTransactionManager.class);
+		given(beanFactory.containsBean(name)).willReturn(true);
+		given(beanFactory.getBean(name, PlatformTransactionManager.class)).willReturn(transactionManager);
+		return transactionManager;
 	}
 
 

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,7 +23,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ScheduledFuture;
 
-import org.junit.Before;
 import org.junit.Test;
 
 import org.springframework.beans.factory.xml.XmlBeanDefinitionReader;
@@ -45,6 +44,7 @@ import org.springframework.web.socket.handler.WebSocketHandlerDecorator;
 import org.springframework.web.socket.server.HandshakeHandler;
 import org.springframework.web.socket.server.HandshakeInterceptor;
 import org.springframework.web.socket.server.support.DefaultHandshakeHandler;
+import org.springframework.web.socket.server.support.OriginHandshakeInterceptor;
 import org.springframework.web.socket.server.support.WebSocketHttpRequestHandler;
 import org.springframework.web.socket.sockjs.SockJsService;
 import org.springframework.web.socket.sockjs.frame.SockJsMessageCodec;
@@ -74,13 +74,7 @@ import static org.junit.Assert.*;
  */
 public class HandlersBeanDefinitionParserTests {
 
-	private GenericWebApplicationContext appContext;
-
-
-	@Before
-	public void setup() {
-		this.appContext = new GenericWebApplicationContext();
-	}
+	private final GenericWebApplicationContext appContext = new GenericWebApplicationContext();
 
 
 	@Test
@@ -103,6 +97,8 @@ public class HandlersBeanDefinitionParserTests {
 				HandshakeHandler handshakeHandler = handler.getHandshakeHandler();
 				assertNotNull(handshakeHandler);
 				assertTrue(handshakeHandler instanceof DefaultHandshakeHandler);
+				assertFalse(handler.getHandshakeInterceptors().isEmpty());
+				assertTrue(handler.getHandshakeInterceptors().get(0) instanceof OriginHandshakeInterceptor);
 			}
 			else {
 				assertThat(shm.getUrlMap().keySet(), contains("/test"));
@@ -112,6 +108,8 @@ public class HandlersBeanDefinitionParserTests {
 				HandshakeHandler handshakeHandler = handler.getHandshakeHandler();
 				assertNotNull(handshakeHandler);
 				assertTrue(handshakeHandler instanceof DefaultHandshakeHandler);
+				assertFalse(handler.getHandshakeInterceptors().isEmpty());
+				assertTrue(handler.getHandshakeInterceptors().get(0) instanceof OriginHandshakeInterceptor);
 			}
 		}
 	}
@@ -135,7 +133,8 @@ public class HandlersBeanDefinitionParserTests {
 		assertNotNull(handshakeHandler);
 		assertTrue(handshakeHandler instanceof TestHandshakeHandler);
 		List<HandshakeInterceptor> interceptors = handler.getHandshakeInterceptors();
-		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class), instanceOf(BarTestInterceptor.class)));
+		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class),
+				instanceOf(BarTestInterceptor.class), instanceOf(OriginHandshakeInterceptor.class)));
 
 		handler = (WebSocketHttpRequestHandler) urlHandlerMapping.getUrlMap().get("/test");
 		assertNotNull(handler);
@@ -144,8 +143,8 @@ public class HandlersBeanDefinitionParserTests {
 		assertNotNull(handshakeHandler);
 		assertTrue(handshakeHandler instanceof TestHandshakeHandler);
 		interceptors = handler.getHandshakeInterceptors();
-		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class), instanceOf(BarTestInterceptor.class)));
-
+		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class),
+				instanceOf(BarTestInterceptor.class), instanceOf(OriginHandshakeInterceptor.class)));
 	}
 
 	@Test
@@ -172,6 +171,7 @@ public class HandlersBeanDefinitionParserTests {
 		assertThat(sockJsService, instanceOf(DefaultSockJsService.class));
 		DefaultSockJsService defaultSockJsService = (DefaultSockJsService) sockJsService;
 		assertThat(defaultSockJsService.getTaskScheduler(), instanceOf(ThreadPoolTaskScheduler.class));
+		assertFalse(defaultSockJsService.shouldSuppressCors());
 
 		Map<TransportType, TransportHandler> transportHandlers = defaultSockJsService.getTransportHandlers();
 		assertThat(transportHandlers.values(),
@@ -189,7 +189,7 @@ public class HandlersBeanDefinitionParserTests {
 		assertEquals(TestHandshakeHandler.class, handler.getHandshakeHandler().getClass());
 
 		List<HandshakeInterceptor> interceptors = defaultSockJsService.getHandshakeInterceptors();
-		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class), instanceOf(BarTestInterceptor.class)));
+		assertThat(interceptors, contains(instanceOf(FooTestInterceptor.class), instanceOf(BarTestInterceptor.class), instanceOf(OriginHandshakeInterceptor.class)));
 	}
 
 	@Test
@@ -221,8 +221,16 @@ public class HandlersBeanDefinitionParserTests {
 		assertEquals(256, transportService.getDisconnectDelay());
 		assertEquals(1024, transportService.getHttpMessageCacheSize());
 		assertEquals(20, transportService.getHeartbeatTime());
+		assertEquals("/js/sockjs.min.js", transportService.getSockJsClientLibraryUrl());
 		assertEquals(TestMessageCodec.class, transportService.getMessageCodec().getClass());
+
+		List<HandshakeInterceptor> interceptors = transportService.getHandshakeInterceptors();
+		assertThat(interceptors, contains(instanceOf(OriginHandshakeInterceptor.class)));
+		assertTrue(transportService.shouldSuppressCors());
+		assertTrue(transportService.getAllowedOrigins().contains("http://mydomain1.com"));
+		assertTrue(transportService.getAllowedOrigins().contains("http://mydomain2.com"));
 	}
+
 
 	private void loadBeanDefinitions(String fileName) {
 		XmlBeanDefinitionReader reader = new XmlBeanDefinitionReader(this.appContext);
@@ -264,8 +272,10 @@ class TestWebSocketHandler implements WebSocketHandler {
 	}
 }
 
+
 class FooWebSocketHandler extends TestWebSocketHandler {
 }
+
 
 class TestHandshakeHandler implements HandshakeHandler {
 
@@ -277,8 +287,10 @@ class TestHandshakeHandler implements HandshakeHandler {
 	}
 }
 
+
 class TestChannelInterceptor extends ChannelInterceptorAdapter {
 }
+
 
 class FooTestInterceptor implements HandshakeInterceptor {
 
@@ -295,8 +307,10 @@ class FooTestInterceptor implements HandshakeInterceptor {
 	}
 }
 
+
 class BarTestInterceptor extends FooTestInterceptor {
 }
+
 
 @SuppressWarnings({ "unchecked", "rawtypes" })
 class TestTaskScheduler implements TaskScheduler {
@@ -330,8 +344,8 @@ class TestTaskScheduler implements TaskScheduler {
 	public ScheduledFuture scheduleWithFixedDelay(Runnable task, long delay) {
 		return null;
 	}
-
 }
+
 
 class TestMessageCodec implements SockJsMessageCodec {
 

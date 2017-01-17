@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -22,13 +22,13 @@ import java.util.List;
 import org.springframework.beans.factory.BeanFactory;
 import org.springframework.beans.factory.BeanFactoryAware;
 import org.springframework.beans.factory.InitializingBean;
+import org.springframework.beans.factory.config.ConfigurableBeanFactory;
 import org.springframework.messaging.handler.annotation.support.DefaultMessageHandlerMethodFactory;
 import org.springframework.messaging.handler.annotation.support.MessageHandlerMethodFactory;
 import org.springframework.util.Assert;
 
 /**
- * Helper bean for registering {@link JmsListenerEndpoint} with
- * a {@link JmsListenerEndpointRegistry}.
+ * Helper bean for registering {@link JmsListenerEndpoint} with a {@link JmsListenerEndpointRegistry}.
  *
  * @author Stephane Nicoll
  * @author Juergen Hoeller
@@ -47,8 +47,11 @@ public class JmsListenerEndpointRegistrar implements BeanFactoryAware, Initializ
 
 	private BeanFactory beanFactory;
 
-	private final List<JmsListenerEndpointDescriptor> endpointDescriptors =
-			new ArrayList<JmsListenerEndpointDescriptor>();
+	private final List<JmsListenerEndpointDescriptor> endpointDescriptors = new ArrayList<>();
+
+	private boolean startImmediately;
+
+	private Object mutex = endpointDescriptors;
 
 
 	/**
@@ -113,6 +116,10 @@ public class JmsListenerEndpointRegistrar implements BeanFactoryAware, Initializ
 	@Override
 	public void setBeanFactory(BeanFactory beanFactory) {
 		this.beanFactory = beanFactory;
+		if (beanFactory instanceof ConfigurableBeanFactory) {
+			ConfigurableBeanFactory cbf = (ConfigurableBeanFactory) beanFactory;
+			this.mutex = cbf.getSingletonMutex();
+		}
 	}
 
 
@@ -122,8 +129,12 @@ public class JmsListenerEndpointRegistrar implements BeanFactoryAware, Initializ
 	}
 
 	protected void registerAllEndpoints() {
-		for (JmsListenerEndpointDescriptor descriptor : this.endpointDescriptors) {
-			this.endpointRegistry.registerListenerContainer(descriptor.endpoint, resolveContainerFactory(descriptor));
+		synchronized (this.mutex) {
+			for (JmsListenerEndpointDescriptor descriptor : this.endpointDescriptors) {
+				this.endpointRegistry.registerListenerContainer(
+						descriptor.endpoint, resolveContainerFactory(descriptor));
+			}
+			this.startImmediately = true;  // trigger immediate startup
 		}
 	}
 
@@ -136,9 +147,10 @@ public class JmsListenerEndpointRegistrar implements BeanFactoryAware, Initializ
 		}
 		else if (this.containerFactoryBeanName != null) {
 			Assert.state(this.beanFactory != null, "BeanFactory must be set to obtain container factory by bean name");
+			// Consider changing this if live change of the factory is required...
 			this.containerFactory = this.beanFactory.getBean(
 					this.containerFactoryBeanName, JmsListenerContainerFactory.class);
-			return this.containerFactory;  // Consider changing this if live change of the factory is required
+			return this.containerFactory;
 		}
 		else {
 			throw new IllegalStateException("Could not resolve the " +
@@ -156,8 +168,19 @@ public class JmsListenerEndpointRegistrar implements BeanFactoryAware, Initializ
 	public void registerEndpoint(JmsListenerEndpoint endpoint, JmsListenerContainerFactory<?> factory) {
 		Assert.notNull(endpoint, "Endpoint must be set");
 		Assert.hasText(endpoint.getId(), "Endpoint id must be set");
+
 		// Factory may be null, we defer the resolution right before actually creating the container
-		this.endpointDescriptors.add(new JmsListenerEndpointDescriptor(endpoint, factory));
+		JmsListenerEndpointDescriptor descriptor = new JmsListenerEndpointDescriptor(endpoint, factory);
+
+		synchronized (this.mutex) {
+			if (this.startImmediately) {  // register and start immediately
+				this.endpointRegistry.registerListenerContainer(descriptor.endpoint,
+						resolveContainerFactory(descriptor), true);
+			}
+			else {
+				this.endpointDescriptors.add(descriptor);
+			}
+		}
 	}
 
 	/**

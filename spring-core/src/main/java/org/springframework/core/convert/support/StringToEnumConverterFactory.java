@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,24 +20,18 @@ import org.springframework.core.convert.converter.Converter;
 import org.springframework.core.convert.converter.ConverterFactory;
 
 /**
- * Converts from a String to a java.lang.Enum by calling {@link Enum#valueOf(Class, String)}.
+ * Converts from a String to a {@link java.lang.Enum} by calling {@link Enum#valueOf(Class, String)}.
  *
  * @author Keith Donald
+ * @author Stephane Nicoll
  * @since 3.0
  */
-@SuppressWarnings({ "unchecked", "rawtypes" })
+@SuppressWarnings({"unchecked", "rawtypes"})
 final class StringToEnumConverterFactory implements ConverterFactory<String, Enum> {
 
 	@Override
 	public <T extends Enum> Converter<String, T> getConverter(Class<T> targetType) {
-		Class<?> enumType = targetType;
-		while (enumType != null && !enumType.isEnum()) {
-			enumType = enumType.getSuperclass();
-		}
-		if (enumType == null) {
-			throw new IllegalArgumentException("The target type " + targetType.getName() + " does not refer to an enum");
-		}
-		return new StringToEnum(enumType);
+		return new StringToEnum(ConversionUtils.getEnumType(targetType));
 	}
 
 

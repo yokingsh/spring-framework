@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -112,17 +112,16 @@ public class ServerEndpointExporter extends WebApplicationObjectSupport
 	 * Actually register the endpoints. Called by {@link #afterSingletonsInstantiated()}.
 	 */
 	protected void registerEndpoints() {
-		Set<Class<?>> endpointClasses = new LinkedHashSet<Class<?>>();
+		Set<Class<?>> endpointClasses = new LinkedHashSet<>();
 		if (this.annotatedEndpointClasses != null) {
 			endpointClasses.addAll(this.annotatedEndpointClasses);
 		}
 
 		ApplicationContext context = getApplicationContext();
 		if (context != null) {
-			String[] endpointNames = context.getBeanNamesForAnnotation(ServerEndpoint.class);
-			for (String beanName : endpointNames) {
-				Class<?> beanType = context.getType(beanName);
-				endpointClasses.add(beanType);
+			String[] endpointBeanNames = context.getBeanNamesForAnnotation(ServerEndpoint.class);
+			for (String beanName : endpointBeanNames) {
+				endpointClasses.add(context.getType(beanName));
 			}
 		}
 
@@ -132,9 +131,7 @@ public class ServerEndpointExporter extends WebApplicationObjectSupport
 
 		if (context != null) {
 			Map<String, ServerEndpointConfig> endpointConfigMap = context.getBeansOfType(ServerEndpointConfig.class);
-			for (Map.Entry<String, ServerEndpointConfig> configEntry : endpointConfigMap.entrySet()) {
-				String beanName = configEntry.getKey();
-				ServerEndpointConfig endpointConfig = configEntry.getValue();
+			for (ServerEndpointConfig endpointConfig : endpointConfigMap.values()) {
 				registerEndpoint(endpointConfig);
 			}
 		}

@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2016 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -23,10 +23,10 @@ import java.util.Map;
 
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpEntityEnclosingRequest;
-import org.apache.http.client.methods.CloseableHttpResponse;
+import org.apache.http.HttpResponse;
+import org.apache.http.client.HttpClient;
 import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.entity.ByteArrayEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.protocol.HTTP;
 import org.apache.http.protocol.HttpContext;
 
@@ -35,12 +35,10 @@ import org.springframework.http.HttpMethod;
 import org.springframework.util.StringUtils;
 
 /**
- * {@link org.springframework.http.client.ClientHttpRequest} implementation that uses
- * Apache HttpComponents HttpClient to execute requests.
+ * {@link ClientHttpRequest} implementation based on
+ * Apache HttpComponents HttpClient.
  *
  * <p>Created via the {@link HttpComponentsClientHttpRequestFactory}.
- *
- * <p><b>NOTE:</b> Requires Apache HttpComponents 4.3 or higher, as of Spring 4.0.
  *
  * @author Oleg Kalnichevski
  * @author Arjen Poutsma
@@ -50,23 +48,23 @@ import org.springframework.util.StringUtils;
  */
 final class HttpComponentsClientHttpRequest extends AbstractBufferingClientHttpRequest {
 
-	private final CloseableHttpClient httpClient;
+	private final HttpClient httpClient;
 
 	private final HttpUriRequest httpRequest;
 
 	private final HttpContext httpContext;
 
 
-	HttpComponentsClientHttpRequest(CloseableHttpClient httpClient, HttpUriRequest httpRequest, HttpContext httpContext) {
-		this.httpClient = httpClient;
-		this.httpRequest = httpRequest;
-		this.httpContext = httpContext;
+	HttpComponentsClientHttpRequest(HttpClient client, HttpUriRequest request, HttpContext context) {
+		this.httpClient = client;
+		this.httpRequest = request;
+		this.httpContext = context;
 	}
 
 
 	@Override
 	public HttpMethod getMethod() {
-		return HttpMethod.valueOf(this.httpRequest.getMethod());
+		return HttpMethod.resolve(this.httpRequest.getMethod());
 	}
 
 	@Override
@@ -88,7 +86,7 @@ final class HttpComponentsClientHttpRequest extends AbstractBufferingClientHttpR
 			HttpEntity requestEntity = new ByteArrayEntity(bufferedOutput);
 			entityEnclosingRequest.setEntity(requestEntity);
 		}
-		CloseableHttpResponse httpResponse = this.httpClient.execute(this.httpRequest, this.httpContext);
+		HttpResponse httpResponse = this.httpClient.execute(this.httpRequest, this.httpContext);
 		return new HttpComponentsClientHttpResponse(httpResponse);
 	}
 

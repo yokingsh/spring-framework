@@ -1,5 +1,5 @@
 /*
- * Copyright 2002-2014 the original author or authors.
+ * Copyright 2002-2015 the original author or authors.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -19,21 +19,22 @@ package org.springframework.web.socket.sockjs.client;
 import java.net.URI;
 import java.util.UUID;
 
-import org.springframework.util.AlternativeJdkIdGenerator;
 import org.springframework.util.IdGenerator;
+import org.springframework.util.JdkIdGenerator;
 import org.springframework.web.socket.sockjs.transport.TransportType;
 import org.springframework.web.util.UriComponentsBuilder;
 
 /**
- * Given the base URL to a SockJS server endpoint, also provides methods to
- * generate and obtain session and a server id used for construct a transport URL.
+ * Container for the base URL of a SockJS endpoint with additional helper methods
+ * to derive related SockJS URLs as the {@link #getInfoUrl() info} URL and
+ * {@link #getTransportUrl(TransportType) transport} URLs.
  *
  * @author Rossen Stoyanchev
  * @since 4.1
  */
 public class SockJsUrlInfo {
 
-	private static final IdGenerator idGenerator = new AlternativeJdkIdGenerator();
+	private static final IdGenerator idGenerator = new JdkIdGenerator();
 
 
 	private final URI sockJsUrl;
